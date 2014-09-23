@@ -30,11 +30,11 @@ from calibre.utils.config import JSONConfig
 
 # Default settings {{{
 cprefs = JSONConfig('cover_generation')
-cprefs.defaults['title_font_size'] = 60  # px
-cprefs.defaults['subtitle_font_size'] = 40  # px
-cprefs.defaults['footer_font_size'] = 40  # px
-cprefs.defaults['cover_width'] = 600  # px
-cprefs.defaults['cover_height'] = 800  # px
+cprefs.defaults['title_font_size'] = 120  # px
+cprefs.defaults['subtitle_font_size'] = 80  # px
+cprefs.defaults['footer_font_size'] = 80  # px
+cprefs.defaults['cover_width'] = 1200  # px
+cprefs.defaults['cover_height'] = 1600  # px
 cprefs.defaults['title_font_family'] = None
 cprefs.defaults['subtitle_font_family'] = None
 cprefs.defaults['footer_font_family'] = None
@@ -47,7 +47,7 @@ cprefs.defaults['footer_template'] = r'''program:
 # Show at most two authors, on separate lines.
 authors = field('authors');
 num = count(authors, ' & ');
-authors = cmp(num, 2, authors, authors, sublist(authors, 0, 2, ' & '));
+authors = sublist(authors, 0, 2, ' & ');
 authors = list_re(authors, ' & ', '(.+)', '<b>\1');
 authors = re(authors, ' & ', '<br>');
 re(authors, '&&', '&')
@@ -258,7 +258,7 @@ default_color_themes = {
     'Earth' : to_theme('e8d9ac c7b07b 564628 382d1a'),
     'Grass' : to_theme('d8edb5 abc8a4 375d3b 183128'),
     'Water' : to_theme('d3dcf2 829fe4 00448d 00305a'),
-    'Cloud' : to_theme('e6f1f5 aab3b6 6e7476 3b3e40'),
+    'Silver': to_theme('e6f1f5 aab3b6 6e7476 3b3e40'),
 }
 
 
@@ -501,7 +501,7 @@ def create_cover(title, authors, series=None, series_index=1, prefs=None, as_qim
         prefs or cprefs, title_template=d['title_template'], subtitle_template=d['subtitle_template'], footer_template=d['footer_template'])
     return generate_cover(mi, prefs=prefs, as_qimage=as_qimage)
 
-def test(scale=0.5):
+def test(scale=0.25):
     from PyQt5.Qt import QLabel, QApplication, QPixmap, QMainWindow, QWidget, QScrollArea, QGridLayout
     app = QApplication([])
     mi = Metadata('xxx', ['Kovid Goyal', 'John Q. Doe', 'Author'])

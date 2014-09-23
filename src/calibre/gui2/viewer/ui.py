@@ -102,7 +102,7 @@ class Metadata(QWebView):  # {{{
 
 class History(list):  # {{{
 
-    def __init__(self, action_back, action_forward):
+    def __init__(self, action_back=None, action_forward=None):
         self.action_back = action_back
         self.action_forward = action_forward
         super(History, self).__init__(self)
@@ -111,37 +111,47 @@ class History(list):  # {{{
         self.forward_pos = None
         self.set_actions()
 
-    def set_actions(self):
-        self.action_back.setDisabled(self.back_pos is None)
-        self.action_forward.setDisabled(self.forward_pos is None)
+    def clear(self):
+        del self[:]
 
-    def back(self, from_pos):
+    def set_actions(self):
+        if self.action_back is not None:
+            self.action_back.setDisabled(self.back_pos is None)
+        if self.action_forward is not None:
+            self.action_forward.setDisabled(self.forward_pos is None)
+
+    def back(self, item_when_clicked):
         # Back clicked
         if self.back_pos is None:
             return None
         item = self[self.back_pos]
         self.forward_pos = self.back_pos+1
         if self.forward_pos >= len(self):
-            self.append(from_pos)
+            # We are at the head of the stack, append item to the stack so that
+            # clicking forward again will take us to where we were when we
+            # clicked back
+            self.append(item_when_clicked)
             self.forward_pos = len(self) - 1
         self.insert_pos = self.forward_pos
         self.back_pos = None if self.back_pos == 0 else self.back_pos - 1
         self.set_actions()
         return item
 
-    def forward(self, from_pos):
+    def forward(self, item_when_clicked):
+        # Forward clicked
         if self.forward_pos is None:
             return None
         item = self[self.forward_pos]
         self.back_pos = self.forward_pos - 1
         if self.back_pos < 0:
             self.back_pos = None
-        self.insert_pos = self.back_pos or 0
+        self.insert_pos = min(len(self) - 1, (self.back_pos or 0) + 1)
         self.forward_pos = None if self.forward_pos > len(self) - 2 else self.forward_pos + 1
         self.set_actions()
         return item
 
     def add(self, item):
+        # Link clicked
         self[self.insert_pos:] = []
         while self.insert_pos > 0 and self[self.insert_pos-1] == item:
             self.insert_pos -= 1
@@ -153,6 +163,19 @@ class History(list):  # {{{
         # There can be no forward
         self.forward_pos = None
         self.set_actions()
+
+    def __str__(self):
+        return 'History: Items=%s back_pos=%s insert_pos=%s forward_pos=%s' % (tuple(self), self.back_pos, self.insert_pos, self.forward_pos)
+
+def test_history():
+    h = History()
+    for i in xrange(4):
+        h.add(i)
+    for i in reversed(h):
+        h.back(i)
+    h.forward(0)
+    h.add(9)
+    assert h == [0, 9]
 # }}}
 
 class Main(MainWindow):
