@@ -860,6 +860,10 @@ class EbookViewer(MainWindow):
                     if open_at < self.pos.minimum():
                         open_at = self.pos.minimum()
                     self.goto_page(open_at, loaded_check=False)
+            x=self.pos
+            import pydevd;pydevd.settrace()
+            print type(x), dir(x)
+            print x.value()
 
     def set_vscrollbar_value(self, pagenum):
         self.vertical_scrollbar.blockSignals(True)
