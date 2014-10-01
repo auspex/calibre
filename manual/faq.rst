@@ -72,7 +72,7 @@ Finally, I encourage you to ditch the content ToC and only have a metadata ToC i
     Kindle firmware tends to malfunction if you disable the generation of the
     end-of-file inline ToC. So it is recommended that you leave the generated
     ToC alone. If you create an AZW3 file with a metadata ToC and no
-    end-of-file generated ToC, some features ont he Kindle will not work, such
+    end-of-file generated ToC, some features on the Kindle will not work, such
     as the Page Flip feature.
 
 The covers for my MOBI files have stopped showing up in Kindle for PC/Kindle for Android/iPad etc.
@@ -93,7 +93,7 @@ this bug.
 
 How do I convert a collection of HTML files in a specific order?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In order to convert a collection of HTML files in a specific oder, you have to
+In order to convert a collection of HTML files in a specific order, you have to
 create a table of contents file. That is, another HTML file that contains links
 to all the other files in the desired order. Such a file looks like::
 
@@ -654,7 +654,7 @@ the |app| icon on the tool bar, select Library Maintenance and run the Check
 Library action. It will warn you about any problems in your library, which you
 should fix by hand.
 
-.. note:: A |app| library is just a folder which contains all the book files and their metadata. All the metadata is stored in a single file called metadata.db, in the top level folder. If this file gets corrupted, you may see an empty list of books in |app|. In this case you can ask |app| to restore your books by doing a right-click on the |app| icon in the toolbar and selecting Library Maintenance->Restore Library.
+.. note:: A |app| library is just a folder which contains all the book files and their metadata. All the metadata is stored in a single file called metadata.db, in the top level folder. If this file gets corrupted, you may see an empty list of books in |app|. In this case you can ask |app| to restore your books by doing a right-click on the |app| icon in the toolbar and selecting Library Maintenance->Restore database
 
 The list of books in |app| is blank!
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

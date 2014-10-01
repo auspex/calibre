@@ -399,7 +399,7 @@ class Main(MainWindow):
         group = _('Search')
         self.action_find = treg('search.png', _('&Find/Replace'), self.boss.show_find, 'find-replace', ('Ctrl+F',), _('Show the Find/Replace panel'))
         def sreg(name, text, action, overrides={}, keys=(), description=None, icon=None):
-            return reg(icon, text, partial(self.boss.search, action, overrides), name, keys, description or text.replace('&', ''))
+            return reg(icon, text, partial(self.boss.search_action_triggered, action, overrides), name, keys, description or text.replace('&', ''))
         self.action_find_next = sreg('find-next', _('Find &Next'),
                                      'find', {'direction':'down'}, ('F3', 'Ctrl+G'), _('Find next match'))
         self.action_find_previous = sreg('find-previous', _('Find &Previous'),
@@ -676,6 +676,12 @@ class Main(MainWindow):
         d.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea | Qt.TopDockWidgetArea)
         self.checkpoints = CheckpointView(self.boss.global_undo, parent=d)
         d.setWidget(self.checkpoints)
+        self.addDockWidget(Qt.LeftDockWidgetArea, d)
+        d.close()  # Hidden by default
+
+        d = create(_('Saved Searches'), 'saved-searches')
+        d.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea | Qt.TopDockWidgetArea)
+        d.setWidget(self.saved_searches)
         self.addDockWidget(Qt.LeftDockWidgetArea, d)
         d.close()  # Hidden by default
 

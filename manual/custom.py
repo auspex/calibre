@@ -53,7 +53,7 @@ CLI_INDEX='''
 '''
 
 CLI_PREAMBLE='''\
-.. _{cmd}:
+.. _{cmdref}:
 
 ``{cmd}``
 ===================================================================
@@ -83,7 +83,7 @@ def generate_calibredb_help(preamble, app):
 
     global_options = '\n'.join(render_options('calibredb', groups, False, False))
 
-    lines, toc = [], []
+    lines = []
     for cmd in COMMANDS:
         args = []
         if cmd == 'catalog':
@@ -91,7 +91,6 @@ def generate_calibredb_help(preamble, app):
         parser = getattr(cli, cmd+'_option_parser')(*args)
         if cmd == 'catalog':
             parser = parser[0]
-        toc.append('  * :ref:`calibredb-%s`'%cmd)
         lines += ['.. _calibredb-'+cmd+':', '']
         lines += [cmd, '~'*20, '']
         usage = parser.usage.strip()
@@ -106,8 +105,7 @@ def generate_calibredb_help(preamble, app):
         lines += render_options('calibredb '+cmd, groups, False)
         lines += ['']
 
-    toc = '\n'.join(toc)
-    raw = preamble + '\n\n'+toc + '\n\n' + global_options+'\n\n'+'\n'.join(lines)
+    raw = preamble + '\n\n'+'.. contents::\n  :local:'+ '\n\n' + global_options+'\n\n'+'\n'.join(lines)
     update_cli_doc('calibredb', raw, app)
 
 def generate_ebook_convert_help(preamble, app):
@@ -130,7 +128,7 @@ def generate_ebook_convert_help(preamble, app):
     raw += '\n\n' + options
     for pl in sorted(input_format_plugins(), key=lambda x:x.name):
         parser, plumber = create_option_parser(['ebook-convert',
-            'dummyi.'+list(pl.file_types)[0], 'dummyo.epub', '-h'], default_log)
+            'dummyi.'+sorted(pl.file_types)[0], 'dummyo.epub', '-h'], default_log)
         groups = [(pl.name+ ' Options', '', g.option_list) for g in
                 parser.option_groups if g.title == "INPUT OPTIONS"]
         prog = 'ebook-convert-'+(pl.name.lower().replace(' ', '-'))
@@ -229,7 +227,7 @@ def cli_docs(app):
         usage = usage[1:]
         usage = [i.replace(cmd, ':command:`%s`'%cmd) for i in usage]
         usage = '\n'.join(usage)
-        preamble = CLI_PREAMBLE.format(cmd=cmd, cmdline=cmdline, usage=usage)
+        preamble = CLI_PREAMBLE.format(cmd=cmd, cmdref=cmd + '-' + app.config.language, cmdline=cmdline, usage=usage)
         if cmd == 'ebook-convert':
             generate_ebook_convert_help(preamble, app)
         elif cmd == 'calibredb':
@@ -249,7 +247,7 @@ def generate_docs(app):
 
 def template_docs(app):
     from template_ref_generate import generate_template_language_help
-    raw = generate_template_language_help()
+    raw = generate_template_language_help(app.config.language)
     update_cli_doc('template_ref', raw, app)
 
 def setup(app):
