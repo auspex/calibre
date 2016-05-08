@@ -8,6 +8,10 @@ __builtin__.__dict__['dynamic_property'] = lambda func: func(None)
 from math import floor
 from functools import partial
 
+sys.path.append('/opt/eclipse-4.3/plugins/org.python.pydev_2.7.0.2013032300/pysrc')
+print sys.path
+# import pydevd;pydevd.settrace()
+
 warnings.simplefilter('ignore', DeprecationWarning)
 try:
     os.getcwdu()
