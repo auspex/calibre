@@ -15,12 +15,13 @@ from PyQt5.Qt import (QIcon, QFont, QLabel, QListWidget, QAction,
 from calibre.gui2 import (error_dialog, pixmap_to_data, gprefs,
         warning_dialog)
 from calibre.gui2.filename_pattern_ui import Ui_Form
-from calibre import fit_image
+from calibre import fit_image, strftime
 from calibre.ebooks import BOOK_EXTENSIONS
 from calibre.utils.config import prefs, XMLConfig
 from calibre.gui2.progress_indicator import ProgressIndicator as _ProgressIndicator
 from calibre.gui2.dnd import (dnd_has_image, dnd_get_image, dnd_get_files,
     IMAGE_EXTENSIONS, dnd_has_extension, DownloadDialog)
+from calibre.utils.localization import localize_user_manual_link
 
 history = XMLConfig('history')
 
@@ -64,6 +65,11 @@ class FilenamePattern(QWidget, Ui_Form):  # {{{
     def __init__(self, parent):
         QWidget.__init__(self, parent)
         self.setupUi(self)
+        try:
+            self.help_label.setText(self.help_label.text() % localize_user_manual_link(
+                'http://manual.calibre-ebook.com/regexp.html'))
+        except TypeError:
+            pass  # link already localized
 
         self.test_button.clicked.connect(self.do_test)
         self.re.lineEdit().returnPressed[()].connect(self.do_test)
@@ -137,7 +143,7 @@ class FilenamePattern(QWidget, Ui_Form):  # {{{
             self.publisher.setText(_('No match'))
 
         if mi.pubdate:
-            self.pubdate.setText(mi.pubdate.strftime('%Y-%m-%d'))
+            self.pubdate.setText(strftime('%Y-%m-%d', mi.pubdate))
         else:
             self.pubdate.setText(_('No match'))
 
@@ -171,14 +177,14 @@ class FormatList(QListWidget):  # {{{
 
     def dragEnterEvent(self, event):
         md = event.mimeData()
-        if dnd_has_extension(md, self.DROPABBLE_EXTENSIONS):
+        if dnd_has_extension(md, self.DROPABBLE_EXTENSIONS, allow_all_extensions=True):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
         event.setDropAction(Qt.CopyAction)
         md = event.mimeData()
         # Now look for ebook files
-        urls, filenames = dnd_get_files(md, self.DROPABBLE_EXTENSIONS)
+        urls, filenames = dnd_get_files(md, self.DROPABBLE_EXTENSIONS, allow_all_extensions=True)
         if not urls:
             # Nothing found
             return
@@ -289,7 +295,7 @@ class ImageView(QWidget, ImageDropMixin):  # {{{
     def __init__(self, parent=None, show_size_pref_name=None, default_show_size=False):
         QWidget.__init__(self, parent)
         self.show_size_pref_name = ('show_size_on_cover_' + show_size_pref_name) if show_size_pref_name else None
-        self._pixmap = QPixmap(self)
+        self._pixmap = QPixmap()
         self.setMinimumSize(QSize(150, 200))
         ImageDropMixin.__init__(self)
         self.draw_border = True
@@ -474,7 +480,13 @@ class EnLineEdit(LineEditECM, QLineEdit):  # {{{
     Includes an extended content menu.
     '''
 
-    pass
+    def event(self, ev):
+        # See https://bugreports.qt.io/browse/QTBUG-46911
+        if ev.type() == ev.ShortcutOverride and (
+                ev.key() in (Qt.Key_Left, Qt.Key_Right) and (ev.modifiers() & ~Qt.KeypadModifier) == Qt.ControlModifier):
+            ev.accept()
+        return QLineEdit.event(self, ev)
+
 # }}}
 
 class ItemsCompleter(QCompleter):  # {{{

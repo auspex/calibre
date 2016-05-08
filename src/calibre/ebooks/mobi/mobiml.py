@@ -14,7 +14,7 @@ from calibre.ebooks.oeb.base import XHTML, XHTML_NS, urlnormalize
 from calibre.ebooks.oeb.stylizer import Stylizer
 from calibre.ebooks.oeb.transforms.flatcss import KeyMapper
 from calibre.ebooks.mobi.utils import convert_color_for_font_tag
-from calibre.utils.magick.draw import identify_data
+from calibre.utils.imghdr import identify
 
 MBP_NS = 'http://mobipocket.com/ns/mbp'
 def MBP(name):
@@ -310,8 +310,8 @@ class MobiMLizer(object):
             return
         style = stylizer.style(elem)
         # <mbp:frame-set/> does not exist lalalala
-        if style['display'] in ('none', 'oeb-page-head', 'oeb-page-foot') \
-           or style['visibility'] == 'hidden':
+        if ((style['display'] in ('none', 'oeb-page-head', 'oeb-page-foot') or style['visibility'] == 'hidden') and
+                elem.get('data-calibre-jacket-searchable-tags', None) != '1'):
             id_ = elem.get('id', None)
             if id_:
                 # Keep anchors so people can use display:none
@@ -445,8 +445,8 @@ class MobiMLizer(object):
                             href)
                 else:
                     try:
-                        width, height = identify_data(item.data)[:2]
-                    except:
+                        width, height = identify(item.data)[1:]
+                    except Exception:
                         self.oeb.logger.warn('Invalid image:', href)
                     else:
                         if 'width' not in istate.attrib and 'height' not in \

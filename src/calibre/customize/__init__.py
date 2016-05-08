@@ -43,7 +43,7 @@ class Plugin(object):  # {{{
         * :meth:`load_resources`
 
     '''
-    #: List of platforms this plugin works on
+    #: List of platforms this plugin works on.
     #: For example: ``['windows', 'osx', 'linux']``
     supported_platforms = []
 
@@ -84,8 +84,10 @@ class Plugin(object):  # {{{
 
     def initialize(self):
         '''
-        Called once when calibre plugins are initialized. Plugins are re-initialized
-        every time a new plugin is added.
+        Called once when calibre plugins are initialized.  Plugins are
+        re-initialized every time a new plugin is added. Also note that if the
+        plugin is run in a worker process, such as for adding books, then the
+        plugin will be initialized for every new worker process.
 
         Perform any plugin specific initialization here, such as extracting
         resources from the plugin zip file. The path to the zip file is
@@ -177,8 +179,7 @@ class Plugin(object):  # {{{
             help_text = self.customization_help(gui=True)
             help_text = QLabel(help_text, config_dialog)
             help_text.setWordWrap(True)
-            help_text.setTextInteractionFlags(Qt.LinksAccessibleByMouse
-                    | Qt.LinksAccessibleByKeyboard)
+            help_text.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
             help_text.setOpenExternalLinks(True)
             v.addWidget(help_text)
             sc = plugin_customization(self)
@@ -213,7 +214,7 @@ class Plugin(object):  # {{{
 
         :param names: List of paths to resources in the zip file using / as separator
 
-        :return: A dictionary of the form ``{name : file_contents}``. Any names
+        :return: A dictionary of the form ``{name: file_contents}``. Any names
                  that were not found in the zip file will not be present in the
                  dictionary.
 
@@ -316,16 +317,17 @@ class FileTypePlugin(Plugin):  # {{{
     A plugin that is associated with a particular set of file types.
     '''
 
-    #: Set of file types for which this plugin should be run
-    #: For example: ``set(['lit', 'mobi', 'prc'])``
-    file_types     = set([])
+    #: Set of file types for which this plugin should be run.
+    #: For example: ``{'lit', 'mobi', 'prc'}``
+    file_types     = set()
 
     #: If True, this plugin is run when books are added
     #: to the database
     on_import      = False
 
     #: If True, this plugin is run after books are added
-    #: to the database
+    #: to the database. In this case the postimport and postadd
+    #: methods of the plugin are called.
     on_postimport  = False
 
     #: If True, this plugin is run just before a conversion
@@ -359,11 +361,32 @@ class FileTypePlugin(Plugin):  # {{{
 
     def postimport(self, book_id, book_format, db):
         '''
-        Called post import, i.e., after the book file has been added to the database.
+        Called post import, i.e., after the book file has been added to the database. Note that
+        this is different from :meth:`postadd` which is called when the book record is created for
+        the first time. This method is called whenever a new file is added to a book record. It is
+        useful for modifying the book record based on the contents of the newly added file.
 
         :param book_id: Database id of the added book.
         :param book_format: The file type of the book that was added.
-                :param db: Library database.
+        :param db: Library database.
+        '''
+        pass  # Default implementation does nothing
+
+    def postadd(self, book_id, fmt_map, db):
+        '''
+        Called post add, i.e. after a book has been added to the db. Note that
+        this is different from :meth:`postimport`, which is called after a single book file
+        has been added to a book. postadd() is called only when an entire book record
+        with possibly more than one book file has been created for the first time.
+        This is useful if you wish to modify the book record in the database when the
+        book is first added to calibre.
+
+        :param book_id: Database id of the added book.
+        :param fmt_map: Map of file format to path from which the file format
+            was added. Note that this might or might not point to an actual
+            existing file, as sometimes files are added as streams. In which case
+            it might be a dummy value or an on-existent path.
+        :param db: Library database
         '''
         pass  # Default implementation does nothing
 
@@ -474,7 +497,7 @@ class CatalogPlugin(Plugin):  # {{{
         return db.get_data_as_dict(ids=opts.ids)
 
     def get_output_fields(self, db, opts):
-        # Return a list of requested fields, with opts.sort_by first
+        # Return a list of requested fields
         all_std_fields = set(
                           ['author_sort','authors','comments','cover','formats',
                            'id','isbn','library_name','ondevice','pubdate','publisher',
@@ -489,7 +512,8 @@ class CatalogPlugin(Plugin):  # {{{
 
         if opts.fields != 'all':
             # Make a list from opts.fields
-            requested_fields = set(opts.fields.split(','))
+            of = [x.strip() for x in opts.fields.split(',')]
+            requested_fields = set(of)
 
             # Validate requested_fields
             if requested_fields - all_fields:
@@ -500,16 +524,13 @@ class CatalogPlugin(Plugin):  # {{{
                       (current_library_name(), ', '.join(sorted(list(all_fields)))))
                 raise ValueError("unable to generate catalog with specified fields")
 
-            fields = list(all_fields & requested_fields)
+            fields = [x for x in of if x in all_fields]
         else:
-            fields = list(all_fields)
+            fields = sorted(all_fields, key=self._field_sorter)
 
         if not opts.connected_device['is_device_connected'] and 'ondevice' in fields:
             fields.pop(int(fields.index('ondevice')))
 
-        fields = sorted(fields, key=self._field_sorter)
-        if opts.sort_by and opts.sort_by in fields:
-            fields.insert(0,fields.pop(int(fields.index(opts.sort_by))))
         return fields
 
     def initialize(self):
@@ -758,5 +779,27 @@ class EditBookToolPlugin(Plugin):  # {{{
     type = _('Edit Book Tool')
     minimum_calibre_version = (1, 46, 0)
 
+# }}}
+
+class LibraryClosedPlugin(Plugin):  # {{{
+    '''
+    LibraryClosedPlugins are run when a library is closed, either at shutdown,
+    when the library is changed, or when a library is used in some other way.
+    At the moment these plugins won't be called by the CLI functions.
+    '''
+    type = _('Library Closed')
+
+    # minimum version 2.54 because that is when support was added
+    minimum_calibre_version = (2, 54, 0)
+
+    def run(self, db):
+        '''
+        The db will be a reference to the new_api (db.cache.py).
+
+        The plugin must run to completion. It must not use the GUI, threads, or
+        any signals.
+        '''
+        raise NotImplementedError('LibraryClosedPlugin '
+                'run method must be overridden in subclass')
 # }}}
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -53,13 +53,13 @@ class ConfirmDialog(QDialog):
     def __init__(self, ids, parent):
         QDialog.__init__(self, parent)
         self.setWindowTitle(_('Schedule download?'))
-        self.setWindowIcon(QIcon(I('dialog_question.png')))
+        self.setWindowIcon(QIcon(I('download-metadata.png')))
 
         l = self.l = QGridLayout()
         self.setLayout(l)
 
         i = QLabel(self)
-        i.setPixmap(QPixmap(I('dialog_question.png')))
+        i.setPixmap(QPixmap(I('download-metadata.png')))
         l.addWidget(i, 0, 0)
 
         t = QLabel(

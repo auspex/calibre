@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import with_statement
 
@@ -6,7 +6,7 @@ __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import os, cPickle, re, shutil, marshal, zipfile, glob, time, sys, hashlib, json
+import os, cPickle, re, shutil, marshal, zipfile, glob, time, sys, hashlib, json, urllib, errno
 from zlib import compress
 from itertools import chain
 
@@ -222,10 +222,46 @@ class Kakasi(Command):  # {{{
             shutil.rmtree(kakasi)
 # }}}
 
+class CACerts(Command):  # {{{
+
+    description = 'Get updated mozilla CA certificate bundle'
+    CA_PATH = os.path.join(Command.RESOURCES, 'mozilla-ca-certs.pem')
+
+    def run(self, opts):
+        try:
+            with open(self.CA_PATH, 'rb') as f:
+                raw = f.read()
+        except EnvironmentError as err:
+            if err.errno != errno.ENOENT:
+                raise
+            raw = b''
+        nraw = urllib.urlopen('https://curl.haxx.se/ca/cacert.pem').read()
+        if not nraw:
+            raise RuntimeError('Failed to download CA cert bundle')
+        if nraw != raw:
+            self.info('Updating Mozilla CA certificates')
+            with open(self.CA_PATH, 'wb') as f:
+                f.write(nraw)
+            self.verify_ca_certs()
+
+    def verify_ca_certs(self):
+        from calibre.utils.https import get_https_resource_securely
+        get_https_resource_securely('https://calibre-ebook.com', cacerts=self.b(self.CA_PATH))
+# }}}
+
+class RapydScript(Command):  # {{{
+
+    description = 'Compile RapydScript to JavaScript'
+
+    def run(self, opts):
+        from calibre.utils.rapydscript import compile_srv
+        compile_srv()
+# }}}
+
 class Resources(Command):  # {{{
 
     description = 'Compile various needed calibre resources'
-    sub_commands = ['kakasi', 'coffee']
+    sub_commands = ['kakasi', 'coffee', 'rapydscript']
 
     def run(self, opts):
         scripts = {}
@@ -313,6 +349,28 @@ class Resources(Command):  # {{{
         import json
         json.dump(function_dict, open(dest, 'wb'), indent=4)
 
+        self.info('\tCreating editor-functions.json')
+        dest = self.j(self.RESOURCES, 'editor-functions.json')
+        function_dict = {}
+        from calibre.gui2.tweak_book.function_replace import builtin_functions
+        for func in builtin_functions():
+            try:
+                src = ''.join(inspect.getsourcelines(func)[0][1:])
+            except Exception:
+                continue
+            src = src.replace('def ' + func.func_name, 'def replace')
+            imports = ['from %s import %s' % (x.__module__, x.__name__) for x in func.imports]
+            if imports:
+                src = '\n'.join(imports) + '\n\n' + src
+            function_dict[func.name] = src
+        json.dump(function_dict, open(dest, 'wb'), indent=4)
+        self.info('\tCreating user-manual-translation-stats.json')
+        d = {}
+        for lc, stats in json.load(open(self.j(self.d(self.SRC), 'manual', 'locale', 'completed.json'))).iteritems():
+            total = sum(stats.itervalues())
+            d[lc] = stats['translated'] / float(total)
+        json.dump(d, open(self.j(self.RESOURCES, 'user-manual-translation-stats.json'), 'wb'), indent=4)
+
     def clean(self):
         for x in ('scripts', 'ebook-convert-complete'):
             x = self.j(self.RESOURCES, x+'.pickle')
@@ -322,9 +380,8 @@ class Resources(Command):  # {{{
         kakasi.clean()
         coffee.clean()
         for x in ('builtin_recipes.xml', 'builtin_recipes.zip',
-                'template-functions.json'):
+                'template-functions.json', 'user-manual-translation-stats.json'):
             x = self.j(self.RESOURCES, x)
             if os.path.exists(x):
                 os.remove(x)
 # }}}
-

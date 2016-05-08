@@ -106,23 +106,23 @@ class ALEX(N516):
         return os.path.join(base, 'covers', name)
 
     def upload_cover(self, path, filename, metadata, filepath):
-        from calibre.ebooks import calibre_cover
-        from calibre.utils.magick.draw import thumbnail
+        from calibre.ebooks.covers import calibre_cover2
+        from calibre.utils.img import scale_image
         coverdata = getattr(metadata, 'thumbnail', None)
         if coverdata and coverdata[2]:
             cover = coverdata[2]
         else:
-            cover = calibre_cover(metadata.get('title', _('Unknown')),
+            cover = calibre_cover2(metadata.get('title', _('Unknown')),
                     metadata.get('authors', _('Unknown')))
 
-        cover = thumbnail(cover, width=self.THUMBNAIL_HEIGHT,
-                height=self.THUMBNAIL_HEIGHT, fmt='png')[-1]
+        cover = scale_image(cover, width=self.THUMBNAIL_HEIGHT,
+                height=self.THUMBNAIL_HEIGHT, as_png=True)[-1]
 
         cpath = self.alex_cpath(os.path.join(path, filename))
         cdir = os.path.dirname(cpath)
         if not os.path.exists(cdir):
             os.makedirs(cdir)
-        with open(cpath, 'wb') as coverfile:
+        with lopen(cpath, 'wb') as coverfile:
             coverfile.write(cover)
             fsync(coverfile)
 

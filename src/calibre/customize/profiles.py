@@ -263,10 +263,6 @@ class OutputProfile(Plugin):
     #: Special periodical formatting needed in EPUB
     epub_periodical_format = None
 
-    @classmethod
-    def tags_to_string(cls, tags):
-        from xml.sax.saxutils import escape
-        return escape(', '.join(tags))
 
 class iPadOutput(OutputProfile):
 
@@ -426,7 +422,7 @@ class iPadOutput(OutputProfile):
                 }
 
         '''
-        # }}}
+    # }}}
 
 class iPad3Output(iPadOutput):
 
@@ -473,7 +469,7 @@ class SonyReaderOutput(OutputProfile):
     unsupported_unicode_chars = [u'\u201f', u'\u201b']
 
     epub_periodical_format = 'sony'
-    #periodical_date_in_title = False
+    # periodical_date_in_title = False
 
 
 class KoboReaderOutput(OutputProfile):
@@ -534,6 +530,16 @@ class GenericEinkLarge(GenericEink):
 
     screen_size               = (600, 999)
     comic_screen_size = screen_size
+
+class GenericEinkHD(GenericEink):
+
+    name = 'Generic e-ink HD'
+    short_name = 'generic_eink_hd'
+    description = _('Suitable for use with any modern high resolution e-ink device')
+
+    screen_size = (10000, 10000)
+    comic_screen_size = (10000, 10000)
+
 
 class JetBook5Output(OutputProfile):
 
@@ -645,11 +651,6 @@ class KindleOutput(OutputProfile):
 
     mobi_ems_per_blockquote = 2.0
 
-    @classmethod
-    def tags_to_string(cls, tags):
-        return u'%s <br/><span style="color:white">%s</span>' % (', '.join(tags),
-                'ttt '.join(tags)+'ttt ')
-
 class KindleDXOutput(OutputProfile):
 
     name        = 'Kindle DX'
@@ -660,28 +661,47 @@ class KindleDXOutput(OutputProfile):
     screen_size               = (744, 1022)
     dpi                       = 150.0
     comic_screen_size = (771, 1116)
-    #comic_screen_size         = (741, 1022)
+    # comic_screen_size         = (741, 1022)
     supports_mobi_indexing = True
     periodical_date_in_title = False
     empty_ratings_char = u'\u2606'
     ratings_char = u'\u2605'
     mobi_ems_per_blockquote = 2.0
 
-    @classmethod
-    def tags_to_string(cls, tags):
-        return u'%s <br/><span style="color: white">%s</span>' % (', '.join(tags),
-                'ttt '.join(tags)+'ttt ')
-
 class KindlePaperWhiteOutput(KindleOutput):
 
     name = 'Kindle PaperWhite'
     short_name = 'kindle_pw'
-    description = _('This profile is intended for the Amazon Kindle PaperWhite')
+    description = _('This profile is intended for the Amazon Kindle PaperWhite 1 and 2')
 
     # Screen size is a best guess
     screen_size               = (658, 940)
     dpi                       = 212.0
     comic_screen_size = screen_size
+
+class KindleVoyageOutput(KindleOutput):
+
+    name = 'Kindle Voyage'
+    short_name = 'kindle_voyage'
+    description = _('This profile is intended for the Amazon Kindle Voyage')
+
+    # Screen size is currently just the spec size, actual renderable area will
+    # depend on someone with the device doing tests.
+    screen_size               = (1080, 1430)
+    dpi                       = 300.0
+    comic_screen_size = screen_size
+
+class KindlePaperWhite3Output(KindleVoyageOutput):
+
+    name = 'Kindle PaperWhite 3'
+    short_name = 'kindle_pw3'
+    description = _('This profile is intended for the Amazon Kindle PaperWhite 3 and above')
+    # Screen size is currently just the spec size, actual renderable area will
+    # depend on someone with the device doing tests.
+    screen_size               = (1072, 1430)
+    dpi                       = 300.0
+    comic_screen_size = screen_size
+
 
 class KindleFireOutput(KindleDXOutput):
 
@@ -692,12 +712,6 @@ class KindleFireOutput(KindleDXOutput):
     screen_size               = (570, 1016)
     dpi                       = 169.0
     comic_screen_size = (570, 1016)
-
-    @classmethod
-    def tags_to_string(cls, tags):
-        # The idiotic fire doesn't obey the color:white directive
-        from xml.sax.saxutils import escape
-        return escape(', '.join(tags))
 
 class IlliadOutput(OutputProfile):
 
@@ -762,21 +776,6 @@ class NookColorOutput(NookOutput):
     comic_screen_size         = (594, 900)
     dpi                       = 169
 
-class BambookOutput(OutputProfile):
-
-    author      = 'Li Fanxi'
-    name        = 'Sanda Bambook'
-    short_name  = 'bambook'
-    description = _('This profile is intended for the Sanda Bambook.')
-
-    # Screen size is for full screen display
-    screen_size               = (580, 780)
-    # Comic size is for normal display
-    comic_screen_size         = (540, 700)
-    dpi                       = 168.451
-    fbase                     = 12
-    fsizes                    = [10, 12, 14, 16]
-
 class PocketBook900Output(OutputProfile):
 
     author = 'Chris Lockfort'
@@ -800,13 +799,17 @@ class PocketBookPro912Output(OutputProfile):
     dpi                       = 155.0
     comic_screen_size         = screen_size
 
-output_profiles = [OutputProfile, SonyReaderOutput, SonyReader300Output,
-        SonyReader900Output, SonyReaderT3Output, MSReaderOutput, MobipocketOutput, HanlinV3Output,
-        HanlinV5Output, CybookG3Output, CybookOpusOutput, KindleOutput,
-        iPadOutput, iPad3Output, KoboReaderOutput, TabletOutput, SamsungGalaxy,
-        SonyReaderLandscapeOutput, KindleDXOutput, IlliadOutput, NookHD,
-        IRexDR1000Output, IRexDR800Output, JetBook5Output, NookOutput,
-        BambookOutput, NookColorOutput, PocketBook900Output, PocketBookPro912Output,
-        GenericEink, GenericEinkLarge, KindleFireOutput, KindlePaperWhiteOutput]
+output_profiles = [
+    OutputProfile, SonyReaderOutput, SonyReader300Output, SonyReader900Output,
+    SonyReaderT3Output, MSReaderOutput, MobipocketOutput, HanlinV3Output,
+    HanlinV5Output, CybookG3Output, CybookOpusOutput, KindleOutput, iPadOutput,
+    iPad3Output, KoboReaderOutput, TabletOutput, SamsungGalaxy,
+    SonyReaderLandscapeOutput, KindleDXOutput, IlliadOutput, NookHD,
+    IRexDR1000Output, IRexDR800Output, JetBook5Output, NookOutput,
+    NookColorOutput, PocketBook900Output,
+    PocketBookPro912Output, GenericEink, GenericEinkLarge, GenericEinkHD,
+    KindleFireOutput, KindlePaperWhiteOutput, KindleVoyageOutput,
+    KindlePaperWhite3Output
+]
 
 output_profiles.sort(cmp=lambda x,y:cmp(x.name.lower(), y.name.lower()))

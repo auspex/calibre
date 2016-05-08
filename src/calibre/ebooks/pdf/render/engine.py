@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -10,9 +10,8 @@ __docformat__ = 'restructuredtext en'
 import sys, traceback, math
 from collections import namedtuple
 from functools import wraps, partial
-from future_builtins import map
+from future_builtins import map, zip
 
-import sip
 from PyQt5.Qt import (QPaintEngine, QPaintDevice, Qt, QTransform, QBrush)
 
 from calibre.constants import plugins
@@ -24,6 +23,7 @@ from calibre.utils.fonts.sfnt.metrics import FontMetrics
 
 Point = namedtuple('Point', 'x y')
 ColorState = namedtuple('ColorState', 'color opacity do')
+GlyphInfo = namedtuple('GlyphInfo', 'name size stretch positions indices')
 
 def repr_transform(t):
     vals = map(fmtnum, (t.m11(), t.m12(), t.m21(), t.m22(), t.dx(), t.dy()))
@@ -50,16 +50,16 @@ class Font(FontMetrics):
 class PdfEngine(QPaintEngine):
 
     FEATURES = QPaintEngine.AllFeatures & ~(
-        QPaintEngine.PorterDuff | QPaintEngine.PerspectiveTransform
-        | QPaintEngine.ObjectBoundingModeGradients
-        | QPaintEngine.RadialGradientFill
-        | QPaintEngine.ConicalGradientFill
+        QPaintEngine.PorterDuff | QPaintEngine.PerspectiveTransform |
+        QPaintEngine.ObjectBoundingModeGradients |
+        QPaintEngine.RadialGradientFill |
+        QPaintEngine.ConicalGradientFill
     )
 
     def __init__(self, file_object, page_width, page_height, left_margin,
                  top_margin, right_margin, bottom_margin, width, height,
                  errors=print, debug=print, compress=True,
-                 mark_links=False):
+                 mark_links=False, opts=None):
         QPaintEngine.__init__(self, self.FEATURES)
         self.file_object = file_object
         self.compress, self.mark_links = compress, mark_links
@@ -87,7 +87,12 @@ class PdfEngine(QPaintEngine):
         self.fonts = {}
         self.current_page_num = 1
         self.current_page_inited = False
+        self.content_written_to_current_page = False
         self.qt_hack, err = plugins['qt_hack']
+        self.has_footers = opts is not None and (opts.pdf_page_numbers or opts.pdf_footer_template is not None)
+        self.has_headers = opts is not None and opts.pdf_header_template is not None
+        self.header_height = (opts.margin_top or 0) if opts else 0
+        self.footer_height = (opts.margin_bottom) or 0 if opts else 0
         if err:
             raise RuntimeError('Failed to load qt_hack with err: %s'%err)
 
@@ -107,6 +112,7 @@ class PdfEngine(QPaintEngine):
         return self.graphics.current_state.do_stroke
 
     def init_page(self):
+        self.content_written_to_current_page = False
         self.pdf.transform(self.pdf_system)
         self.pdf.apply_fill(color=(1, 1, 1))  # QPainter has a default background brush of white
         self.graphics.reset()
@@ -127,12 +133,14 @@ class PdfEngine(QPaintEngine):
                 return False
         return True
 
-    def end_page(self):
+    def end_page(self, is_last_page=False):
         if self.current_page_inited:
             self.pdf.restore_stack()
-            self.pdf.end_page()
+            drop_page = is_last_page and not self.content_written_to_current_page
+            self.pdf.end_page(drop_page=drop_page)
             self.current_page_inited = False
-            self.current_page_num += 1
+            self.current_page_num += 0 if drop_page else 1
+        return self.content_written_to_current_page
 
     def end(self):
         try:
@@ -156,6 +164,7 @@ class PdfEngine(QPaintEngine):
 
     @store_error
     def drawTiledPixmap(self, rect, pixmap, point):
+        self.content_written_to_current_page = 'drawTiledPixmap'
         self.apply_graphics_state()
         brush = QBrush(pixmap)
         bl = rect.topLeft()
@@ -170,6 +179,7 @@ class PdfEngine(QPaintEngine):
 
     @store_error
     def drawPixmap(self, rect, pixmap, source_rect):
+        self.content_written_to_current_page = 'drawPixmap'
         self.apply_graphics_state()
         source_rect = source_rect.toRect()
         pixmap = (pixmap if source_rect == pixmap.rect() else
@@ -182,6 +192,7 @@ class PdfEngine(QPaintEngine):
 
     @store_error
     def drawImage(self, rect, image, source_rect, flags=Qt.AutoColor):
+        self.content_written_to_current_page = 'drawImage'
         self.apply_graphics_state()
         source_rect = source_rect.toRect()
         image = (image if source_rect == image.rect() else
@@ -197,6 +208,7 @@ class PdfEngine(QPaintEngine):
 
     @store_error
     def drawPath(self, path):
+        self.content_written_to_current_page = 'drawPath'
         self.apply_graphics_state()
         p = convert_path(path)
         fill_rule = {Qt.OddEvenFill:'evenodd',
@@ -206,6 +218,7 @@ class PdfEngine(QPaintEngine):
 
     @store_error
     def drawPoints(self, points):
+        self.content_written_to_current_page = 'drawPoints'
         self.apply_graphics_state()
         p = Path()
         for point in points:
@@ -220,6 +233,8 @@ class PdfEngine(QPaintEngine):
             for rect in rects:
                 self.resolve_fill(rect)
                 bl = rect.topLeft()
+                if self.do_stroke or self.do_fill:
+                    self.content_written_to_current_page = 'drawRects'
                 self.pdf.draw_rect(bl.x(), bl.y(), rect.width(), rect.height(),
                                 stroke=self.do_stroke, fill=self.do_fill)
 
@@ -242,17 +257,22 @@ class PdfEngine(QPaintEngine):
     def drawTextItem(self, point, text_item):
         # return super(PdfEngine, self).drawTextItem(point, text_item)
         self.apply_graphics_state()
-        gi = self.qt_hack.get_glyphs(point, text_item)
+        gi = GlyphInfo(*self.qt_hack.get_glyphs(point, text_item))
         if not gi.indices:
-            sip.delete(gi)
             return
-        name = hash(bytes(gi.name))
-        if name not in self.fonts:
+        metrics = self.fonts.get(gi.name)
+        if metrics is None:
+            from calibre.utils.fonts.utils import get_all_font_names
             try:
-                self.fonts[name] = self.create_sfnt(text_item)
+                names = get_all_font_names(gi.name, True)
+                names = ' '.join('%s=%s'%(k, names[k]) for k in sorted(names))
+            except Exception:
+                names = 'Unknown'
+            self.debug('Loading font: %s' % names)
+            try:
+                self.fonts[gi.name] = metrics = self.create_sfnt(text_item)
             except UnsupportedFont:
                 return super(PdfEngine, self).drawTextItem(point, text_item)
-        metrics = self.fonts[name]
         for glyph_id in gi.indices:
             try:
                 metrics.glyph_map[glyph_id] = metrics.full_glyph_map[glyph_id]
@@ -260,17 +280,27 @@ class PdfEngine(QPaintEngine):
                 pass
         glyphs = []
         last_x = last_y = 0
-        for i, pos in enumerate(gi.positions):
-            x, y = pos.x(), pos.y()
-            glyphs.append((x-last_x, last_y - y, gi.indices[i]))
+        for glyph_index, (x, y) in zip(gi.indices, gi.positions):
+            glyphs.append((x-last_x, last_y - y, glyph_index))
             last_x, last_y = x, y
 
+        if not self.content_written_to_current_page:
+            ypositions = [y for x, y in gi.positions]
+            miny = min(ypositions or (0,))
+            maxy = max(ypositions or (self.pixel_height,))
+            page_top = self.header_height if self.has_headers else 0
+            page_bottom = self.pixel_height - (self.footer_height if self.has_footers else 0)
+            if page_top <= miny <= page_bottom or page_top <= maxy <= page_bottom:
+                self.content_written_to_current_page = 'drawTextItem'
+            else:
+                self.debug('Text in header/footer: miny=%s maxy=%s page_top=%s page_bottom=%s'% (
+                    miny, maxy, page_top, page_bottom))
         self.pdf.draw_glyph_run([gi.stretch, 0, 0, -1, 0, 0], gi.size, metrics,
                                 glyphs)
-        sip.delete(gi)
 
     @store_error
     def drawPolygon(self, points, mode):
+        self.content_written_to_current_page = 'drawPolygon'
         self.apply_graphics_state()
         if not points:
             return
@@ -310,7 +340,7 @@ class PdfDevice(QPaintDevice):  # {{{
     def __init__(self, file_object, page_size=A4, left_margin=inch,
                  top_margin=inch, right_margin=inch, bottom_margin=inch,
                  xdpi=1200, ydpi=1200, errors=print, debug=print,
-                 compress=True, mark_links=False):
+                 compress=True, mark_links=False, opts=None):
         QPaintDevice.__init__(self)
         self.xdpi, self.ydpi = xdpi, ydpi
         self.page_width, self.page_height = page_size
@@ -322,7 +352,7 @@ class PdfDevice(QPaintDevice):  # {{{
                                 left_margin, top_margin, right_margin,
                                 bottom_margin, self.width(), self.height(),
                                 errors=errors, debug=debug, compress=compress,
-                                mark_links=mark_links)
+                                mark_links=mark_links, opts=opts)
         self.add_outline = self.engine.add_outline
         self.add_links = self.engine.add_links
 
@@ -378,5 +408,3 @@ class PdfDevice(QPaintDevice):  # {{{
         self.engine.set_metadata(*args, **kwargs)
 
 # }}}
-
-

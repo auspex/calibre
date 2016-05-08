@@ -22,12 +22,13 @@ from calibre.web import Recipe
 from calibre.ebooks.metadata.toc import TOC
 from calibre.ebooks.metadata import MetaInformation
 from calibre.web.feeds import feed_from_xml, templates, feeds_from_index, Feed
-from calibre.web.fetch.simple import option_parser as web2disk_option_parser
-from calibre.web.fetch.simple import RecursiveFetcher
+from calibre.web.fetch.simple import option_parser as web2disk_option_parser, RecursiveFetcher, AbortArticle
+from calibre.web.fetch.utils import prepare_masthead_image
 from calibre.utils.threadpool import WorkRequest, ThreadPool, NoResultsPending
 from calibre.ptempfile import PersistentTemporaryFile
 from calibre.utils.date import now as nowf
-from calibre.utils.magick.draw import save_cover_data_to, add_borders_to_image
+from calibre.utils.icu import numeric_sort_key
+from calibre.utils.img import save_cover_data_to, add_borders_to_image
 from calibre.utils.localization import canonicalize_lang
 from calibre.utils.logging import ThreadSafeWrapper
 
@@ -93,7 +94,7 @@ class BasicNewsRecipe(Recipe):
     #: By default: Day_Name, Day_Number Month_Name Year
     timefmt                = ' [%a, %d %b %Y]'
 
-    #: List of feeds to download
+    #: List of feeds to download.
     #: Can be either ``[url1, url2, ...]`` or ``[('title1', url1), ('title2', url2),...]``
     feeds = None
 
@@ -102,7 +103,7 @@ class BasicNewsRecipe(Recipe):
 
     #: Convenient flag to disable loading of stylesheets for websites
     #: that have overly complex stylesheets unsuitable for conversion
-    #: to ebooks formats
+    #: to ebooks formats.
     #: If True stylesheets are not downloaded and processed
     no_stylesheets         = False
 
@@ -110,7 +111,7 @@ class BasicNewsRecipe(Recipe):
     remove_javascript      = True
 
     #: If True the GUI will ask the user for a username and password
-    #: to use while downloading
+    #: to use while downloading.
     #: If set to "optional" the use of a username and password becomes optional
     needs_subscription     = False
 
@@ -144,7 +145,7 @@ class BasicNewsRecipe(Recipe):
     #: manually (though manual cleanup will always be superior).
     auto_cleanup = False
 
-    #: Specify elements that the auto cleanup algorithm should never remove
+    #: Specify elements that the auto cleanup algorithm should never remove.
     #: The syntax is a XPath expression. For example::
     #:
     #:   auto_cleanup_keep = '//div[@id="article-image"]' will keep all divs with
@@ -157,7 +158,7 @@ class BasicNewsRecipe(Recipe):
     #:
     auto_cleanup_keep = None
 
-    #: Specify any extra :term:`CSS` that should be added to downloaded :term:`HTML` files
+    #: Specify any extra :term:`CSS` that should be added to downloaded :term:`HTML` files.
     #: It will be inserted into `<style>` tags, just before the closing
     #: `</head>` tag thereby overriding all :term:`CSS` except that which is
     #: declared using the style attribute on individual :term:`HTML` tags.
@@ -174,7 +175,7 @@ class BasicNewsRecipe(Recipe):
     #: the ignore_duplicate_articles option.
     remove_empty_feeds = False
 
-    #: List of regular expressions that determines which links to follow
+    #: List of regular expressions that determines which links to follow.
     #: If empty, it is ignored. Used only if is_link_wanted is
     #: not implemented. For example::
     #:
@@ -186,7 +187,7 @@ class BasicNewsRecipe(Recipe):
     #: :attr:`BasicNewsRecipe.filter_regexps` should be defined.
     match_regexps         = []
 
-    #: List of regular expressions that determines which links to ignore
+    #: List of regular expressions that determines which links to ignore.
     #: If empty it is ignored. Used only if is_link_wanted is not
     #: implemented. For example::
     #:
@@ -249,7 +250,7 @@ class BasicNewsRecipe(Recipe):
     #: tags before the first element with `id="content"`.
     remove_tags_before    = None
 
-    #: List of attributes to remove from all tags
+    #: List of attributes to remove from all tags.
     #: For example::
     #:
     #:   remove_attributes = ['style', 'font']
@@ -276,7 +277,7 @@ class BasicNewsRecipe(Recipe):
     #:         lambda match: '</body>'),
     #:     ]
     #:
-    #: will remove everythong from `<!--Article ends here-->` to `</body>`.
+    #: will remove everything from `<!--Article ends here-->` to `</body>`.
     preprocess_regexps    = []
 
     #: The CSS that is used to style the templates, i.e., the navigation bars and
@@ -319,25 +320,24 @@ class BasicNewsRecipe(Recipe):
     #: #ffffff instead
     cover_margins = (0, 0, '#ffffff')
 
-    #: Set to a non empty string to disable this recipe
+    #: Set to a non empty string to disable this recipe.
     #: The string will be used as the disabled message
     recipe_disabled = None
 
     #: Ignore duplicates of articles that are present in more than one section.
     #: A duplicate article is an article that has the same title and/or URL.
-    #: To ignore articles with the same title, set this to:
-    #: ignore_duplicate_articles = {'title'}
-    #: To use URLs instead, set it to:
-    #: ignore_duplicate_articles = {'url'}
-    #: To match on title or URL, set it to:
-    #: ignore_duplicate_articles = {'title', 'url'}
+    #: To ignore articles with the same title, set this to::
+    #:
+    #:   ignore_duplicate_articles = {'title'}
+    #:
+    #: To use URLs instead, set it to::
+    #:
+    #:   ignore_duplicate_articles = {'url'}
+    #:
+    #: To match on title or URL, set it to::
+    #:
+    #:   ignore_duplicate_articles = {'title', 'url'}
     ignore_duplicate_articles = None
-
-    #: If you set this True, then calibre will use javascript to login to the
-    #: website. This is needed for some websites that require the use of
-    #: javascript to login. If you set this to True you must implement the
-    #: :meth:`javascript_login` method, to do the actual logging in.
-    use_javascript_to_login = False
 
     # The following parameters control how the recipe attempts to minimize
     # jpeg image sizes
@@ -378,7 +378,13 @@ class BasicNewsRecipe(Recipe):
     #: assigned (default None).
     scale_news_images = None
 
-    # See the built-in profiles for examples of these settings.
+    #: If set to True then links in downloaded articles that point to other downloaded articles are
+    #: changed to point to the downloaded copy of the article rather than its original web URL. If you
+    #: set this to True, you might also need to implement :meth:`canonicalize_internal_url` to work
+    #: with the URL scheme of your particular website.
+    resolve_internal_links = False
+
+    # See the built-in recipes for examples of these settings.
 
     def short_title(self):
         return self.title
@@ -472,47 +478,9 @@ class BasicNewsRecipe(Recipe):
                 return br
 
         '''
-        if self.use_javascript_to_login:
-            if getattr(self, 'browser', None) is not None:
-                return self.clone_browser(self.browser)
-            from calibre.web.jsbrowser.browser import Browser
-            br = Browser()
-            with br:
-                self.javascript_login(br, self.username, self.password)
-                kwargs['user_agent'] = br.user_agent
-                ans = browser(*args, **kwargs)
-                ans.copy_cookies_from_jsbrowser(br)
-            return ans
-        else:
-            br = browser(*args, **kwargs)
-            br.addheaders += [('Accept', '*/*')]
-            return br
-
-    def javascript_login(self, browser, username, password):
-        '''
-        This method is used to login to a website that uses javascript for its
-        login form. After the login is complete, the cookies returned from the
-        website are copied to a normal (non-javascript) browser and the
-        download proceeds using those cookies.
-
-        An example implementation::
-
-            def javascript_login(self, browser, username, password):
-                browser.visit('http://some-page-that-has-a-login')
-                form = browser.select_form(nr=0) # Select the first form on the page
-                form['username'] = username
-                form['password'] = password
-                browser.submit(timeout=120) # Submit the form and wait at most two minutes for loading to complete
-
-        Note that you can also select forms with CSS2 selectors, like this::
-
-            browser.select_form('form#login_form')
-            browser.select_from('form[name="someform"]')
-
-        '''
-        raise NotImplementedError('You must implement the javascript_login()'
-                                  ' method if you set use_javascript_to_login'
-                                  ' to True')
+        br = browser(*args, **kwargs)
+        br.addheaders += [('Accept', '*/*')]
+        return br
 
     def clone_browser(self, br):
         '''
@@ -546,11 +514,11 @@ class BasicNewsRecipe(Recipe):
         Override in a subclass to customize extraction of the :term:`URL` that points
         to the content for each article. Return the
         article URL. It is called with `article`, an object representing a parsed article
-        from a feed. See `feedparser <http://packages.python.org/feedparser/>`_.
+        from a feed. See `feedparser <https://pythonhosted.org/feedparser/>`_.
         By default it looks for the original link (for feeds syndicated via a
         service like feedburner or pheedo) and if found,
         returns that or else returns
-        `article.link <http://packages.python.org/feedparser/reference-entry-link.html>`_.
+        `article.link <https://pythonhosted.org/feedparser/reference-entry-link.html>`_.
         '''
         for key in article.keys():
             if key.endswith('_origlink'):
@@ -574,10 +542,16 @@ class BasicNewsRecipe(Recipe):
         an ad page, return the HTML of the real page. Otherwise return
         None.
 
-        `soup`: A `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/documentation.html>`_
+        `soup`: A `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/bs3/documentation.html>`_
         instance containing the downloaded :term:`HTML`.
         '''
         return None
+
+    def abort_article(self, msg=None):
+        ''' Call this method inside any of the preprocess methods to abort the
+        download for the current article. Useful to skip articles that contain
+        inappropriate content, such as pure video articles. '''
+        raise AbortArticle(msg or _('Article download aborted'))
 
     def preprocess_raw_html(self, raw_html, url):
         '''
@@ -610,7 +584,7 @@ class BasicNewsRecipe(Recipe):
         It can be used to do arbitrarily powerful pre-processing on the :term:`HTML`.
         It should return `soup` after processing it.
 
-        `soup`: A `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/documentation.html>`_
+        `soup`: A `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/bs3/documentation.html>`_
         instance containing the downloaded :term:`HTML`.
         '''
         return soup
@@ -622,7 +596,7 @@ class BasicNewsRecipe(Recipe):
         It can be used to do arbitrarily powerful post-processing on the :term:`HTML`.
         It should return `soup` after processing it.
 
-        :param soup: A `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/documentation.html>`_  instance containing the downloaded :term:`HTML`.
+        :param soup: A `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/bs3/documentation.html>`_  instance containing the downloaded :term:`HTML`.
         :param first_fetch: True if this is the first page of an article.
 
         '''
@@ -635,10 +609,29 @@ class BasicNewsRecipe(Recipe):
         '''
         pass
 
+    def canonicalize_internal_url(self, url, is_link=True):
+        '''
+        Return a set of canonical representations of ``url``.  The default
+        implementation uses just the server hostname and path of the URL,
+        ignoring any query parameters, fragments, etc. The canonical
+        representations must be unique across all URLs for this news source. If
+        they are not, then internal links may be resolved incorrectly.
+
+        :param is_link: Is True if the URL is coming from an internal link in
+                        an HTML file. False if the URL is the URL used to
+                        download an article.
+        '''
+        try:
+            parts = urlparse.urlparse(url)
+        except Exception:
+            self.log.error('Failed to parse url: %r, ignoring' % url)
+            return frozenset()
+        return frozenset([(parts.netloc, (parts.path or '').rstrip('/'))])
+
     def index_to_soup(self, url_or_raw, raw=False, as_tree=False):
         '''
         Convenience method that takes an URL to the index page and returns
-        a `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/documentation.html>`_
+        a `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/bs3/documentation.html>`_
         of it.
 
         `url_or_raw`: Either a URL or the downloaded index page as a string
@@ -928,8 +921,11 @@ class BasicNewsRecipe(Recipe):
 
     def _postprocess_html(self, soup, first_fetch, job_info):
         if self.no_stylesheets:
-            for link in list(soup.findAll('link', type=re.compile('css')))+list(soup.findAll('style')):
-                link.extract()
+            for link in soup.findAll('link'):
+                if (link.get('type') or '').lower() == 'text/css' and (link.get('rel') or '').lower() == 'stylesheet':
+                    link.extract()
+            for style in soup.findAll('style'):
+                soup.extract()
         head = soup.find('head')
         if not head:
             head = soup.find('body')
@@ -1351,7 +1347,7 @@ class BasicNewsRecipe(Recipe):
 
     def default_cover(self, cover_file):
         '''
-        Create a generic cover for recipes that dont have a cover
+        Create a generic cover for recipes that don't have a cover
         '''
         try:
             from calibre.ebooks.covers import create_cover
@@ -1379,22 +1375,7 @@ class BasicNewsRecipe(Recipe):
                 width=self.MI_WIDTH, height=self.MI_HEIGHT)
 
     def prepare_masthead_image(self, path_to_image, out_path):
-        from calibre import fit_image
-        from calibre.utils.magick import Image, create_canvas
-
-        img = Image()
-        img.open(path_to_image)
-        width, height = img.size
-        scaled, nwidth, nheight = fit_image(width, height, self.MI_WIDTH, self.MI_HEIGHT)
-        img2 = create_canvas(width, height)
-        frame = create_canvas(self.MI_WIDTH, self.MI_HEIGHT)
-        img2.compose(img)
-        if scaled:
-            img2.size = (nwidth, nheight, 'LanczosFilter', 0.5)
-        left = int((self.MI_WIDTH - nwidth)/2.0)
-        top = int((self.MI_HEIGHT - nheight)/2.0)
-        frame.compose(img2, left, top)
-        frame.save(out_path)
+        prepare_masthead_image(path_to_image, out_path, self.MI_WIDTH, self.MI_HEIGHT)
 
     def create_opf(self, feeds, dir=None):
         if dir is None:
@@ -1469,6 +1450,8 @@ class BasicNewsRecipe(Recipe):
         self.play_order_counter = 0
         self.play_order_map = {}
 
+        self.article_url_map = aumap = defaultdict(set)
+
         def feed_index(num, parent):
             f = feeds[num]
             for j, a in enumerate(f):
@@ -1488,7 +1471,10 @@ class BasicNewsRecipe(Recipe):
                     if po is None:
                         self.play_order_counter += 1
                         po = self.play_order_counter
-                    parent.add_item('%sindex.html'%adir, None,
+                    arelpath = '%sindex.html'%adir
+                    for curl in self.canonicalize_internal_url(a.orig_url, is_link=False):
+                        aumap[curl].add(arelpath)
+                    parent.add_item(arelpath, None,
                             a.title if a.title else _('Untitled Article'),
                             play_order=po, author=auth,
                             description=desc, toc_thumbnail=tt)
@@ -1567,13 +1553,19 @@ class BasicNewsRecipe(Recipe):
 
     def error_in_article_download(self, request, traceback):
         self.jobs_done += 1
-        self.log.error('Failed to download article:', request.article.title,
-        'from', request.article.url)
-        self.log.debug(traceback)
-        self.log.debug('\n')
-        self.report_progress(float(self.jobs_done)/len(self.jobs),
-                _('Article download failed: %s')%force_unicode(request.article.title))
-        self.failed_downloads.append((request.feed, request.article, traceback))
+        if traceback and re.search('^AbortArticle:', traceback, flags=re.M) is not None:
+            self.log.warn('Aborted download of article:', request.article.title,
+                          'from', request.article.url)
+            self.report_progress(float(self.jobs_done)/len(self.jobs),
+                _('Article download aborted: %s')%force_unicode(request.article.title))
+        else:
+            self.log.error('Failed to download article:', request.article.title,
+            'from', request.article.url)
+            self.log.debug(traceback)
+            self.log.debug('\n')
+            self.report_progress(float(self.jobs_done)/len(self.jobs),
+                    _('Article download failed: %s')%force_unicode(request.article.title))
+            self.failed_downloads.append((request.feed, request.article, traceback))
 
     def parse_feeds(self):
         '''
@@ -1619,14 +1611,14 @@ class BasicNewsRecipe(Recipe):
     def tag_to_string(self, tag, use_alt=True, normalize_whitespace=True):
         '''
         Convenience method to take a
-        `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/documentation.html>`_
+        `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/bs3/documentation.html>`_
         `Tag` and extract the text from it recursively, including any CDATA sections
         and alt tag attributes. Return a possibly empty unicode string.
 
         `use_alt`: If `True` try to use the alt attribute for tags that don't
         have any textual content
 
-        `tag`: `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/documentation.html>`_
+        `tag`: `BeautifulSoup <http://www.crummy.com/software/BeautifulSoup/bs3/documentation.html>`_
         `Tag`
         '''
         if tag is None:
@@ -1686,6 +1678,22 @@ class BasicNewsRecipe(Recipe):
             divtag.append(brtag)
         return soup
 
+    def internal_postprocess_book(self, oeb, opts, log):
+        if self.resolve_internal_links and self.article_url_map:
+            seen = set()
+            for item in oeb.spine:
+                for a in item.data.xpath('//*[local-name()="a" and @href]'):
+                    if a.get('rel') == 'calibre-downloaded-from':
+                        continue
+                    url = a.get('href')
+                    for curl in self.canonicalize_internal_url(url):
+                        articles = self.article_url_map.get(curl)
+                        if articles:
+                            arelpath = sorted(articles, key=numeric_sort_key)[0]
+                            a.set('href', item.relhref(arelpath))
+                            if url not in seen:
+                                log.debug('Resolved internal URL: %s -> %s' % (url, arelpath))
+                                seen.add(url)
 
 class CustomIndexRecipe(BasicNewsRecipe):
 

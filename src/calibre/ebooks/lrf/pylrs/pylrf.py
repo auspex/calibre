@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 """
     pylrf.py -- very low level interface to create lrf files.  See pylrs for
     higher level interface that can use this module to render books to lrf.
@@ -514,16 +514,15 @@ class LrfObject(object):
         # belongs somewhere, so here it is.
         #
         composites = {}
-        for name, value in tagDict.items():
+        for name, value in tagDict.iteritems():
             if name == 'rubyAlignAndAdjust':
                 continue
-            if name not in ["bgimagemode", "bgimageid",
-                            "rubyalign",   "rubyadjust",
-                            "empdotscode", "empdotsfontname",
-                            "refempdotsfont"]:
-                self.append(LrfTag(name, value))
-            else:
+            if name in {
+                    "bgimagemode", "bgimageid", "rubyalign", "rubyadjust",
+                    "empdotscode", "empdotsfontname", "refempdotsfont"}:
                 composites[name] = value
+            else:
+                self.append(LrfTag(name, value))
 
         if "rubyalign" in composites or "rubyadjust" in composites:
             ralign = composites.get("rubyalign", "none")

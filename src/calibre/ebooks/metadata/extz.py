@@ -22,7 +22,6 @@ def get_metadata(stream, extract_cover=True):
     '''
     mi = MetaInformation(_('Unknown'), [_('Unknown')])
     stream.seek(0)
-
     try:
         with ZipFile(stream) as zf:
             opf_name = get_first_opf_name(zf)
@@ -31,9 +30,18 @@ def get_metadata(stream, extract_cover=True):
             mi = opf.to_book_metadata()
             if extract_cover:
                 cover_href = opf.raster_cover
+                if not cover_href:
+                    for meta in opf.metadata.xpath('//*[local-name()="meta" and @name="cover"]'):
+                        val = meta.get('content')
+                        if val.rpartition('.')[2].lower() in {'jpeg', 'jpg', 'png'}:
+                            cover_href = val
+                            break
                 if cover_href:
-                    mi.cover_data = (os.path.splitext(cover_href)[1], zf.read(cover_href))
-    except:
+                    try:
+                        mi.cover_data = (os.path.splitext(cover_href)[1], zf.read(cover_href))
+                    except Exception:
+                        pass
+    except Exception:
         return mi
     return mi
 
@@ -90,7 +98,7 @@ def get_first_opf_name(zf):
     return opfs[0]
 
 def _write_new_cover(new_cdata, cpath):
-    from calibre.utils.magick.draw import save_cover_data_to
+    from calibre.utils.img import save_cover_data_to
     new_cover = PersistentTemporaryFile(suffix=os.path.splitext(cpath)[1])
     new_cover.close()
     save_cover_data_to(new_cdata, new_cover.name)

@@ -1,4 +1,4 @@
-#!/usr/bin/env  python
+#!/usr/bin/env  python2
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal kovid@kovidgoyal.net'
 __docformat__ = 'restructuredtext en'
@@ -14,8 +14,10 @@ from PyQt5.Qt import (QAbstractTableModel, QModelIndex, Qt,
     QTimer, pyqtSignal, QIcon, QDialog, QAbstractItemDelegate, QApplication,
     QSize, QStyleOptionProgressBar, QStyle, QToolTip, QFrame,
     QHBoxLayout, QVBoxLayout, QSizePolicy, QLabel, QCoreApplication, QAction,
-    QByteArray, QSortFilterProxyModel)
+    QByteArray, QSortFilterProxyModel, QTextBrowser, QPlainTextEdit)
 
+from calibre import strftime
+from calibre.constants import islinux, isbsd
 from calibre.utils.ipc.server import Server
 from calibre.utils.ipc.job import ParallelJob
 from calibre.gui2 import (Dispatcher, error_dialog, question_dialog,
@@ -23,9 +25,9 @@ from calibre.gui2 import (Dispatcher, error_dialog, question_dialog,
 from calibre.gui2.device import DeviceJob
 from calibre.gui2.dialogs.jobs_ui import Ui_JobsDialog
 from calibre import __appname__, as_unicode
-from calibre.gui2.dialogs.job_view_ui import Ui_Dialog
 from calibre.gui2.progress_indicator import ProgressIndicator
 from calibre.gui2.threaded_jobs import ThreadedJobServer, ThreadedJob
+from calibre.gui2.widgets2 import Dialog
 from calibre.utils.search_query_parser import SearchQueryParser, ParseException
 from calibre.utils.icu import lower
 
@@ -126,7 +128,7 @@ class JobManager(QAbstractTableModel, AdaptSQP):  # {{{
                         return None
                     return ('%dm %ds'%(int(rtime)//60, int(rtime)%60))
                 if col == 4 and job.start_time is not None:
-                    return (time.strftime('%H:%M -- %d %b', time.localtime(job.start_time)))
+                    return (strftime(u'%H:%M -- %d %b', time.localtime(job.start_time)))
             if role == Qt.DecorationRole and col == 0:
                 state = job.run_state
                 if state == job.WAITING:
@@ -407,26 +409,34 @@ class ProgressBarDelegate(QAbstractItemDelegate):  # {{{
         QApplication.style().drawControl(QStyle.CE_ProgressBar, opts, painter)
 # }}}
 
-class DetailView(QDialog, Ui_Dialog):  # {{{
+class DetailView(Dialog):  # {{{
 
     def __init__(self, parent, job):
-        QDialog.__init__(self, parent)
-        self.setupUi(self)
-        self.setWindowTitle(job.description)
         self.job = job
-        self.html_view = (hasattr(job, 'html_details') and not getattr(job,
-            'ignore_html_details', False))
+        self.html_view = hasattr(job, 'html_details') and not getattr(job, 'ignore_html_details', False)
+        Dialog.__init__(self, job.description, 'job-detail-view-dialog', parent)
+
+    def sizeHint(self):
+        return QSize(700, 500)
+
+    def setup_ui(self):
+        self.l = l = QVBoxLayout(self)
         if self.html_view:
-            self.log.setVisible(False)
+            self.tb = w = QTextBrowser(self)
         else:
-            self.tb.setVisible(False)
+            self.log = w = QPlainTextEdit(self)
+            w.setReadOnly(True), w.setLineWrapMode(w.NoWrap)
+        l.addWidget(w)
+        l.addWidget(self.bb)
+        self.bb.clear(), self.bb.setStandardButtons(self.bb.Close)
         self.next_pos = 0
         self.update()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(1000)
-        v = self.log.verticalScrollBar()
-        v.setValue(v.maximum())
+        if not self.html_view:
+            v = self.log.verticalScrollBar()
+            v.setValue(v.maximum())
 
     def update(self):
         if self.html_view:
@@ -445,6 +455,8 @@ class DetailView(QDialog, Ui_Dialog):  # {{{
 # }}}
 
 class JobsButton(QFrame):  # {{{
+
+    tray_tooltip_updated = pyqtSignal(object)
 
     def __init__(self, horizontal=False, size=48, parent=None):
         QFrame.__init__(self, parent)
@@ -474,8 +486,9 @@ class JobsButton(QFrame):  # {{{
         self.setToolTip(b + u' (%s)'%self.shortcut)
         self.action_toggle = QAction(b, parent)
         parent.addAction(self.action_toggle)
-        self.action_toggle.setShortcut(self.shortcut)
         self.action_toggle.triggered.connect(self.toggle)
+        if hasattr(parent, 'keyboard'):
+            parent.keyboard.register_shortcut('toggle jobs list', _('Show/hide the Jobs List'), default_keys=(self.shortcut,), action=self.action_toggle)
 
     def initialize(self, jobs_dialog, job_manager):
         self.jobs_dialog = jobs_dialog
@@ -506,6 +519,17 @@ class JobsButton(QFrame):  # {{{
         src = unicode(self._jobs.text())
         return int(re.search(r'\d+', src).group())
 
+    def tray_tooltip(self, num=0):
+        if num == 0:
+            text = _('No running jobs')
+        elif num == 1:
+            text = _('One running job')
+        else:
+            text = _('%d running jobs') % num
+        if not (islinux or isbsd):
+            text = 'calibre: ' + text
+        return text
+
     def job_added(self, nnum):
         jobs = self._jobs
         src = unicode(jobs.text())
@@ -513,6 +537,7 @@ class JobsButton(QFrame):  # {{{
         text = src.replace(str(num), str(nnum))
         jobs.setText(text)
         self.start()
+        self.tray_tooltip_updated.emit(self.tray_tooltip(nnum))
 
     def job_done(self, nnum):
         jobs = self._jobs
@@ -522,6 +547,7 @@ class JobsButton(QFrame):  # {{{
         jobs.setText(text)
         if nnum == 0:
             self.no_more_jobs()
+        self.tray_tooltip_updated.emit(self.tray_tooltip(nnum))
 
     def no_more_jobs(self):
         if self.is_running:

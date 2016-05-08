@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -108,17 +108,28 @@ def get_decoded_raw(name):
         if syntax in {'html', 'xml'}:
             raw = xml_to_unicode(raw, verbose=True)[0]
         else:
-            m = re.search(r"coding[:=]\s*([-\w.]+)", raw[:1024], flags=re.I)
+            m = re.search(br"coding[:=]\s*([-\w.]+)", raw[:1024], flags=re.I)
             if m is not None and m.group(1) != '8bit':
                 enc = m.group(1)
+                if enc == b'unicode':
+                    enc = 'utf-8'
             else:
                 enc = force_encoding(raw, verbose=True)
             try:
                 raw = raw.decode(enc)
             except (LookupError, ValueError):
-                pass
+                try:
+                    raw = raw.decode('utf-8')
+                except ValueError:
+                    pass
     return raw, syntax
 
+def string_diff(left, right, left_syntax=None, right_syntax=None, left_name='left', right_name='right'):
+    left, right = unicode(left), unicode(right)
+    cache = Cache()
+    cache.set_left(left_name, left), cache.set_right(right_name, right)
+    changed_names = {} if left == right else {left_name:right_name}
+    return cache, {left_name:left_syntax, right_name:right_syntax}, changed_names, {}, set(), set()
 
 def file_diff(left, right):
     (raw1, syntax1), (raw2, syntax2) = map(get_decoded_raw, (left, right))
@@ -193,6 +204,7 @@ class Diff(Dialog):
         self.show_open_in_editor = show_open_in_editor
         self.revert_button_msg = revert_button_msg
         Dialog.__init__(self, _('Differences between books'), 'diff-dialog', parent=parent)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinMaxButtonsHint)
         if show_as_window:
             self.setWindowFlags(Qt.Window)
         self.view.line_activated.connect(self.line_activated)
@@ -328,6 +340,7 @@ class Diff(Dialog):
 
     def __enter__(self):
         self.stacks.setCurrentIndex(0)
+        self.busy.setVisible(True)
         self.busy.pi.startAnimation()
         QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
         QApplication.processEvents(QEventLoop.ExcludeUserInputEvents | QEventLoop.ExcludeSocketNotifiers)
@@ -366,6 +379,13 @@ class Diff(Dialog):
         if identical:
             self.reject()
 
+    def string_diff(self, left, right, **kw):
+        with self:
+            identical = self.apply_diff(kw.pop('identical_msg', None) or _('No differences found'), *string_diff(left, right, **kw))
+            self.view.finalize()
+        if identical:
+            self.reject()
+
     def dir_diff(self, left, right, identical_msg=None):
         with self:
             identical = self.apply_diff(identical_msg or _('The directories are identical'), *dir_diff(left, right))
@@ -381,7 +401,9 @@ class Diff(Dialog):
             calls.append((args, kwargs))
 
         if len(changed_names) + len(renamed_names) + len(removed_names) + len(added_names) < 1:
+            self.busy.setVisible(False)
             info_dialog(self, _('No changes found'), identical_msg, show=True)
+            self.busy.setVisible(True)
             return True
 
         kwargs = lambda name: {'context':self.context, 'beautify':self.beautify, 'syntax':syntax_map.get(name, None)}

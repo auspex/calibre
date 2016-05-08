@@ -1,95 +1,104 @@
-#!/usr/bin/env  python
+#!/usr/bin/env  python2
 __license__   = 'GPL v3'
 
-import re
 from calibre.web.feeds.news import BasicNewsRecipe
+from calibre.utils.date import now
+from css_selectors import Select
+
+def absurl(url):
+    if url.startswith('/'):
+        url = 'http://www.scientificamerican.com' + url
+    return url
+
+keep_classes = {'article-header', 'article-content', 'article-media', 'article-author', 'article-text'}
+remove_classes = {'aside-banner', 'moreToExplore', 'article-footer'}
 
 class ScientificAmerican(BasicNewsRecipe):
     title                 = u'Scientific American'
-    description           = u'Popular Science. Monthly magazine.'
+    description           = u'Popular Science. Monthly magazine. Should be downloaded around the middle of each month.'
     category              = 'science'
-    __author__            = 'Starson17'
+    __author__            = 'Kovid Goyal'
     no_stylesheets        = True
-    use_embedded_content  = False
     language              = 'en'
     publisher             = 'Nature Publishing Group'
     remove_empty_feeds    = True
     remove_javascript     = True
-    oldest_article        = 30
-    max_articles_per_feed = 100
+    timefmt               = ' [%B %Y]'
 
-    conversion_options = {'linearize_tables'  : True
-                        , 'comment'           : description
-                        , 'tags'              : category
-                        , 'publisher'         : publisher
-                        , 'language'          : language
-                        }
+    needs_subscription    = 'optional'
 
     keep_only_tags = [
-                dict(name='h2', attrs={'class':'articleTitle'})
-                ,dict(name='p', attrs={'id':'articleDek'})
-                ,dict(name='p', attrs={'class':'articleInfo'})
-                ,dict(name='div', attrs={'id':['articleContent']})
-                ,dict(name='img', attrs={'src':re.compile(r'/media/inline/blog/Image/', re.DOTALL|re.IGNORECASE)})
-                ]
+        dict(attrs={'class':lambda x: x and bool(set(x.split()).intersection(keep_classes))}),
+    ]
+    remove_tags = [
+        dict(attrs={'class':lambda x: x and bool(set(x.split()).intersection(remove_classes))}),
+        dict(id=['seeAlsoLinks']),
+    ]
 
-    remove_tags = [dict(name='a', attrs={'class':'tinyCommentCount'})
-                                ,dict(name='div', attrs={'id':'bigCoverModule'})
-                                ,dict(name='div', attrs={'class':'addInfo'})
-                                ]
+    def get_browser(self, *args):
+        br = BasicNewsRecipe.get_browser(self)
+        if self.username and self.password:
+            br.open('https://www.scientificamerican.com/my-account/login/')
+            br.select_form(predicate=lambda f:f.attrs.get('id') == 'login')
+            br['emailAddress'] = self.username
+            br['password'] = self.password
+            br.submit()
+        return br
+
     def parse_index(self):
-        soup = self.index_to_soup('http://www.scientificamerican.com/sciammag/')
-        issuetag = soup.find('p',attrs={'id':'articleDek'})
-        self.timefmt = ' [%s]'%(self.tag_to_string(issuetag))
-        img = soup.find('img', alt='Scientific American Magazine', src=True)
-        if img is not None:
-            self.cover_url = img['src']
-        features, feeds = [], []
-        for a in soup.find(attrs={'class':'doubleWide'}).find(attrs={'class':'primaryCol'}).findAll('a',attrs={'title':'Feature'}):
-            if a is None:
+        # Get the cover, date and issue URL
+        root = self.index_to_soup('http://www.scientificamerican.com/sciammag/', as_tree=True)
+        select = Select(root)
+        for a in select('#sa_body .store-listing__img a[href]'):
+            url = absurl(a.get('href'))
+            month = int(filter(None, url.split('/'))[-1].partition('-')[0])
+            if month > now().month:
                 continue
-            desc = ''
-            s = a.parent.parent.find(attrs={'class':'dek'})
-            desc = self.tag_to_string(s)
-            article = {
-                    'url' : a['href'],
-                    'title' : self.tag_to_string(a),
-                    'date' : '',
-                    'description' : desc,
-                    }
-            features.append(article)
-        feeds.append(('Features', features))
-        department = []
-        title = None
-        for li in soup.find(attrs={'class':'secondaryCol'}).findAll('li'):
-            if 'department.cfm' in li.a['href']:
-                if department:
-                    feeds.append((title, department))
-                title = self.tag_to_string(li.a)
-                department = []
-            if 'article.cfm' in li.h3.a['href']:
-                article = {
-                        'url' : li.h3.a['href'],
-                        'title' : self.tag_to_string(li.h3.a),
-                        'date': '',
-                        'description': self.tag_to_string(li.p),
-                    }
-                department.append(article)
-        if department:
-            feeds.append((title, department))
+            for source in a.xpath('descendant::source'):
+                self.cover_url = absurl(source.get('srcset').split()[0])
+                break
+            break
+        else:
+            raise ValueError('The Scientific American website has changed, this recipe needs to be updated')
+
+        # Now parse the actual issue to get the list of articles
+        select = Select(self.index_to_soup(url, as_tree=True))
+        feeds = []
+        for i, section in enumerate(select('#sa_body .toc-articles')):
+            if i == 0:
+                feeds.append(('Features', list(self.parse_sciam_features(select, section))))
+            else:
+                feeds.extend(self.parse_sciam_departments(select, section))
+
         return feeds
 
-    def postprocess_html(self, soup, first_fetch):
-        for item in soup.findAll('a'):
-            if 'topic.cfm' in item['href']:
-                item.replaceWith(item.string)
-        return soup
+    def parse_sciam_features(self, select, section):
+        for article in select('article[data-article-title]', section):
+            title = article.get('data-article-title')
+            for a in select('a[href]', article):
+                url = absurl(a.get('href'))
+                break
+            desc = ''
+            for p in select('p.t_body', article):
+                desc = self.tag_to_string(p)
+                break
+            self.log('Found feature article: %s at %s' % (title, url))
+            self.log('\t' + desc)
+            yield {'title':title, 'url':url, 'description':desc}
 
-    extra_css = '''
-                p{font-weight: normal; font-size:small}
-                li{font-weight: normal; font-size:small}
-                .headline p{font-size:x-small; font-family:Arial,Helvetica,sans-serif;}
-                h2{font-size:large; font-family:Arial,Helvetica,sans-serif;}
-                h3{font-size:x-small;font-family:Arial,Helvetica,sans-serif;}
-                '''
-
+    def parse_sciam_departments(self, select, section):
+        section_title, articles = 'Unknown', []
+        for li in select('li[data-article-title]', section):
+            for span in select('span.department-title', li):
+                if articles:
+                    yield section_title, articles
+                section_title, articles = self.tag_to_string(span), []
+                self.log('\nFound section: %s' % section_title)
+                break
+            for a in select('h2 a[href]', li):
+                title = self.tag_to_string(a)
+                url = absurl(a.get('href'))
+                articles.append({'title':title, 'url':url, 'description':''})
+                self.log('\tFound article: %s at %s' % (title, url))
+        if articles:
+            yield section_title, articles

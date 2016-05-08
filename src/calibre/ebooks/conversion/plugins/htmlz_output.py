@@ -70,6 +70,8 @@ class HTMLZOutput(OutputFormatPlugin):
                 from calibre.utils.filenames import shorten_components_to
                 fname = shorten_components_to(100, (ascii_filename(unicode(oeb_book.metadata.title[0])),))[0]
             with open(os.path.join(tdir, fname+u'.html'), 'wb') as tf:
+                if isinstance(html, unicode):
+                    html = html.encode('utf-8')
                 tf.write(html)
 
             # CSS
@@ -100,9 +102,9 @@ class HTMLZOutput(OutputFormatPlugin):
                     term = oeb_book.metadata.cover[0].term
                     cover_data = oeb_book.guide[term].item.data
                 if cover_data:
-                    from calibre.utils.magick.draw import save_cover_data_to
+                    from calibre.utils.img import save_cover_data_to
                     cover_path = os.path.join(tdir, u'cover.jpg')
-                    with open(cover_path, 'w') as cf:
+                    with lopen(cover_path, 'w') as cf:
                         cf.write('')
                     save_cover_data_to(cover_data, cover_path)
             except:

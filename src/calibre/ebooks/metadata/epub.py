@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 from __future__ import with_statement
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -94,6 +94,8 @@ class OCFReader(OCF):
         except KeyError:
             raise EPubException("missing OCF container.xml file")
         self.opf_path = self.container[OPF.MIMETYPE]
+        if not self.opf_path:
+            raise EPubException("missing OPF package file entry in container")
         try:
             with closing(self.open(self.opf_path)) as f:
                 self.opf = OPF(f, self.root, populate_spine=False)
@@ -245,7 +247,7 @@ def get_quick_metadata(stream):
     return get_metadata(stream, False)
 
 def _write_new_cover(new_cdata, cpath):
-    from calibre.utils.magick.draw import save_cover_data_to
+    from calibre.utils.img import save_cover_data_to
     new_cover = PersistentTemporaryFile(suffix=os.path.splitext(cpath)[1])
     new_cover.close()
     save_cover_data_to(new_cdata, new_cover.name)
@@ -315,7 +317,7 @@ def set_metadata(stream, mi, apply_null=False, update_timestamp=False, force_ide
             if cover_replacable:
                 new_cover = _write_new_cover(new_cdata, cpath)
                 replacements[cpath] = open(new_cover.name, 'rb')
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
 

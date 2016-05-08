@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (absolute_import, print_function)
 
@@ -7,12 +7,6 @@ __copyright__ = '2012, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 import shutil, os, re, struct, textwrap, cStringIO
-
-try:
-    from PIL import Image as PILImage
-    PILImage
-except ImportError:
-    import Image as PILImage
 
 from lxml import html, etree
 
@@ -27,6 +21,8 @@ from calibre.ebooks.metadata import MetaInformation
 from calibre.ebooks.metadata.opf2 import OPFCreator, OPF
 from calibre.ebooks.metadata.toc import TOC
 from calibre.ebooks.mobi.reader.headers import BookHeader
+from calibre.utils.img import save_cover_data_to
+from calibre.utils.imghdr import what
 
 class TopazError(ValueError):
     pass
@@ -42,6 +38,7 @@ class MobiReader(object):
         self.log = log
         self.debug = debug
         self.embedded_mi = None
+        self.warned_about_trailing_entry_corruption = False
         self.base_css_rules = textwrap.dedent('''
                 body { text-align: justify }
 
@@ -389,8 +386,7 @@ class MobiReader(object):
         svg_tags = []
         forwardable_anchors = []
         pagebreak_anchors = []
-        BLOCK_TAGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                                'div', 'p'}
+        BLOCK_TAGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'p'}
         for i, tag in enumerate(root.iter(etree.Element)):
             tag.attrib.pop('xmlns', '')
             for x in tag.attrib:
@@ -528,8 +524,8 @@ class MobiReader(object):
                     attrib['href'] = "#filepos%d" % int(filepos)
                 except ValueError:
                     pass
-            if (tag.tag == 'a' and attrib.get('id', '').startswith('filepos')
-                    and not tag.text and (tag.tail is None or not
+            if (tag.tag == 'a' and attrib.get('id', '').startswith('filepos') and
+                    not tag.text and len(tag) == 0 and (tag.tail is None or not
                         tag.tail.strip()) and getattr(tag.getnext(), 'tag',
                             None) in BLOCK_TAGS):
                 # This is an empty anchor immediately before a block tag, move
@@ -586,6 +582,10 @@ class MobiReader(object):
                 block.insert(0, tag)
             else:
                 block.attrib['id'] = tag.attrib['id']
+
+        # WebKit fails to navigate to anchors located on <br> tags
+        for br in root.xpath('/body/br[@id]'):
+            br.tag = 'div'
 
     def get_left_whitespace(self, tag):
 
@@ -741,11 +741,20 @@ class MobiReader(object):
         flags = self.book_header.extra_flags >> 1
         while flags:
             if flags & 1:
-                num += sizeof_trailing_entry(data, size - num)
+                try:
+                    num += sizeof_trailing_entry(data, size - num)
+                except IndexError:
+                    self.warn_about_trailing_entry_corruption()
+                    return 0
             flags >>= 1
         if self.book_header.extra_flags & 1:
             num += (ord(data[size - num - 1]) & 0x3) + 1
         return num
+
+    def warn_about_trailing_entry_corruption(self):
+        if not self.warned_about_trailing_entry_corruption:
+            self.warned_about_trailing_entry_corruption = True
+            self.log.warn('The trailing data entries in this MOBI file are corrupted, you might see corrupted text in the output')
 
     def text_section(self, index):
         data = self.sections[index][0]
@@ -851,16 +860,15 @@ class MobiReader(object):
                 # This record is a known non image type, not need to try to
                 # load the image
                 continue
-            buf = cStringIO.StringIO(data)
-            try:
-                im = PILImage.open(buf)
-                im = im.convert('RGB')
-            except IOError:
-                continue
 
             path = os.path.join(output_dir, '%05d.jpg' % image_index)
+            try:
+                if what(None, data) not in {'jpg', 'jpeg', 'gif', 'png', 'bmp'}:
+                    continue
+                save_cover_data_to(data, path, minify_to=(10000, 10000))
+            except Exception:
+                continue
             self.image_names.append(os.path.basename(path))
-            im.save(open(path, 'wb'), format='JPEG')
 
 def test_mbp_regex():
     for raw, m in {

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -21,7 +21,8 @@ from PyQt5.Qt import (
     QDialog, QVBoxLayout, QLabel, QDialogButtonBox, QStyle, QStackedWidget,
     QWidget, QTableView, QGridLayout, QFontInfo, QPalette, QTimer, pyqtSignal,
     QAbstractTableModel, QSize, QListView, QPixmap, QModelIndex, QUrl,
-    QAbstractListModel, QColor, QRect, QTextBrowser, QStringListModel, QMenu, QCursor)
+    QAbstractListModel, QRect, QTextBrowser, QStringListModel, QMenu,
+    QCursor, QHBoxLayout, QPushButton, QSizePolicy)
 from PyQt5.QtWebKitWidgets import QWebView
 
 from calibre.customize.ui import metadata_plugins
@@ -31,6 +32,7 @@ from calibre.ebooks.metadata.sources.identify import urls_from_identifiers
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.ebooks.metadata.opf2 import OPF
 from calibre.gui2 import error_dialog, rating_font, gprefs
+from calibre.gui2.progress_indicator import draw_snake_spinner
 from calibre.utils.date import (utcnow, fromordinal, format_date,
         UNDEFINED_DATE, as_utc)
 from calibre.library.comments import comments_to_html
@@ -87,46 +89,20 @@ class CoverDelegate(QStyledItemDelegate):  # {{{
         self.angle = 0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.frame_changed)
-        self.color = parent.palette().color(QPalette.WindowText)
+        self.dark_color = parent.palette().color(QPalette.WindowText)
+        self.light_color = parent.palette().color(QPalette.Window)
         self.spinner_width = 64
 
     def frame_changed(self, *args):
-        self.angle = (self.angle+30)%360
+        self.angle = (self.angle-2)%360
         self.needs_redraw.emit()
 
     def start_animation(self):
         self.angle = 0
-        self.timer.start(200)
+        self.timer.start(10)
 
     def stop_animation(self):
         self.timer.stop()
-
-    def draw_spinner(self, painter, rect):
-        width = rect.width()
-
-        outer_radius = (width-1)*0.5
-        inner_radius = (width-1)*0.5*0.38
-
-        capsule_height = outer_radius - inner_radius
-        capsule_width  = int(capsule_height * (0.23 if width > 32 else 0.35))
-        capsule_radius = capsule_width//2
-
-        painter.save()
-        painter.setRenderHint(painter.Antialiasing)
-
-        for i in xrange(12):
-            color = QColor(self.color)
-            color.setAlphaF(1.0 - (i/12.0))
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(color)
-            painter.save()
-            painter.translate(rect.center())
-            painter.rotate(self.angle - i*30.0)
-            painter.drawRoundedRect(-capsule_width*0.5,
-                    -(inner_radius+capsule_height), capsule_width,
-                    capsule_height, capsule_radius, capsule_radius)
-            painter.restore()
-        painter.restore()
 
     def paint(self, painter, option, index):
         QStyledItemDelegate.paint(self, painter, option, index)
@@ -135,7 +111,7 @@ class CoverDelegate(QStyledItemDelegate):  # {{{
         if waiting:
             rect = QRect(0, 0, self.spinner_width, self.spinner_width)
             rect.moveCenter(option.rect.center())
-            self.draw_spinner(painter, rect)
+            draw_snake_spinner(painter, rect, self.angle, self.light_color, self.dark_color)
         else:
             # Ensure the cover is rendered over any selection rect
             style.drawItemPixmap(painter, option.rect, Qt.AlignTop|Qt.AlignHCenter,
@@ -1029,7 +1005,7 @@ class FullFetch(QDialog):  # {{{
         self.book = self.cover_pixmap = None
 
         self.setWindowTitle(_('Downloading metadata...'))
-        self.setWindowIcon(QIcon(I('metadata.png')))
+        self.setWindowIcon(QIcon(I('download-metadata.png')))
 
         self.stack = QStackedWidget()
         self.l = l = QVBoxLayout()
@@ -1037,24 +1013,21 @@ class FullFetch(QDialog):  # {{{
         l.addWidget(self.stack)
 
         self.bb = QDialogButtonBox(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
-        l.addWidget(self.bb)
+        self.h = h = QHBoxLayout()
+        l.addLayout(h)
         self.bb.rejected.connect(self.reject)
         self.bb.accepted.connect(self.accept)
-        self.next_button = self.bb.addButton(_('Next'), self.bb.ActionRole)
-        self.next_button.setDefault(True)
-        self.next_button.setEnabled(False)
-        self.next_button.setIcon(QIcon(I('ok.png')))
-        self.next_button.clicked.connect(self.next_clicked)
         self.ok_button = self.bb.button(self.bb.Ok)
         self.ok_button.setEnabled(False)
         self.ok_button.clicked.connect(self.ok_clicked)
-        self.prev_button = self.bb.addButton(_('Back'), self.bb.ActionRole)
-        self.prev_button.setIcon(QIcon(I('back.png')))
-        self.prev_button.clicked.connect(self.back_clicked)
+        self.prev_button = pb = QPushButton(QIcon(I('back.png')), _('&Back'), self)
+        pb.clicked.connect(self.back_clicked)
+        pb.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.log_button = self.bb.addButton(_('View log'), self.bb.ActionRole)
         self.log_button.clicked.connect(self.view_log)
         self.log_button.setIcon(QIcon(I('debug.png')))
         self.prev_button.setVisible(False)
+        h.addWidget(self.prev_button), h.addWidget(self.bb)
 
         self.identify_widget = IdentifyWidget(self.log, self)
         self.identify_widget.rejected.connect(self.reject)
@@ -1077,7 +1050,6 @@ class FullFetch(QDialog):  # {{{
         self._lv = LogViewer(self.log, self)
 
     def book_selected(self, book, caches):
-        self.next_button.setVisible(False)
         self.prev_button.setVisible(True)
         self.book = book
         self.stack.setCurrentIndex(1)
@@ -1087,9 +1059,7 @@ class FullFetch(QDialog):  # {{{
         self.ok_button.setFocus()
 
     def back_clicked(self):
-        self.next_button.setVisible(True)
         self.prev_button.setVisible(False)
-        self.next_button.setFocus()
         self.stack.setCurrentIndex(0)
         self.covers_widget.cancel()
         self.covers_widget.reset_covers()
@@ -1114,7 +1084,6 @@ class FullFetch(QDialog):  # {{{
         self.covers_widget.cleanup()
 
     def identify_results_found(self):
-        self.next_button.setEnabled(True)
         self.ok_button.setEnabled(True)
 
     def next_clicked(self, *args):

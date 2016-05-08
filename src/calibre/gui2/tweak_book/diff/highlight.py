@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -8,13 +8,12 @@ __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import os
 
-from PyQt5.Qt import QTextDocument, QTextCursor, QTextCharFormat, QPlainTextDocumentLayout
+from PyQt5.Qt import QTextDocument, QTextCursor, QPlainTextDocumentLayout
 
 from calibre.gui2.tweak_book import tprefs
 from calibre.gui2.tweak_book.editor.text import get_highlighter as calibre_highlighter, SyntaxHighlighter
 from calibre.gui2.tweak_book.editor.themes import get_theme, highlight_to_char_format
-
-NULL_FMT = QTextCharFormat()
+from calibre.gui2.tweak_book.editor.syntax.utils import format_for_pygments_token, NULL_FMT
 
 class QtHighlighter(QTextDocument):
 
@@ -40,7 +39,11 @@ class QtHighlighter(QTextDocument):
                 cursor.insertText(block.text())
                 dest_block = cursor.block()
                 c = QTextCursor(dest_block)
-                for af in block.layout().additionalFormats():
+                try:
+                    afs = block.layout().additionalFormats()
+                except AttributeError:
+                    afs = ()
+                for af in afs:
                     start = dest_block.position() + af.start
                     c.setPosition(start), c.setPosition(start + af.length, c.KeepAnchor)
                     c.setCharFormat(af.format)
@@ -72,44 +75,6 @@ def pygments_lexer(filename):
             return glff('a.py')
         return None
 
-_pyg_map = None
-def pygments_map():
-    global _pyg_map
-    if _pyg_map is None:
-        from pygments.token import Token
-        _pyg_map = {
-            Token: None,
-            Token.Comment: 'Comment',
-            Token.Comment.Preproc: 'PreProc',
-            Token.String: 'String',
-            Token.Number: 'Number',
-            Token.Keyword.Type: 'Type',
-            Token.Keyword: 'Keyword',
-            Token.Name.Builtin: 'Identifier',
-            Token.Operator: 'Statement',
-            Token.Name.Function: 'Function',
-            Token.Literal: 'Constant',
-            Token.Error: 'Error',
-        }
-    return _pyg_map
-
-def format_for_token(theme, cache, token):
-    try:
-        return cache[token]
-    except KeyError:
-        pass
-    pmap = pygments_map()
-    while token is not None:
-        try:
-            name = pmap[token]
-        except KeyError:
-            token = token.parent
-            continue
-        cache[token] = ans = theme[name]
-        return ans
-    cache[token] = ans = NULL_FMT
-    return ans
-
 class PygmentsHighlighter(object):
 
     def __init__(self, text, lexer):
@@ -117,7 +82,7 @@ class PygmentsHighlighter(object):
         theme = {k:highlight_to_char_format(v) for k, v in theme.iteritems()}
         theme[None] = NULL_FMT
         def fmt(token):
-            return format_for_token(theme, cache, token)
+            return format_for_pygments_token(theme, cache, token)
 
         from pygments import lex
         lines = self.lines = [[]]

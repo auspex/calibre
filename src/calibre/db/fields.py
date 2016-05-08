@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
-#from future_builtins import map
+# from future_builtins import map
 
 __license__   = 'GPL v3'
 __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -253,13 +253,24 @@ class CompositeField(OneToOneField):
     def bool_sort_key(self, val):
         return self._bool_sort_key(force_to_bool(val))
 
-    def render_composite(self, book_id, mi):
+    def __render_composite(self, book_id, mi, formatter, template_cache):
+        ' INTERNAL USE ONLY. DO NOT USE THIS OUTSIDE THIS CLASS! '
+        ans = formatter.safe_format(
+            self.metadata['display']['composite_template'], mi, _('TEMPLATE ERROR'),
+            mi, column_name=self._composite_name, template_cache=template_cache).strip()
+        with self._lock:
+            self._render_cache[book_id] = ans
+        return ans
+
+    def _render_composite_with_cache(self, book_id, mi, formatter, template_cache):
+        ''' INTERNAL USE ONLY. DO NOT USE METHOD DIRECTLY. INSTEAD USE
+         db.composite_for() OR mi.get(). Those methods make sure there is no
+         risk of infinite recursion when evaluating templates that refer to
+         themselves. '''
         with self._lock:
             ans = self._render_cache.get(book_id, None)
         if ans is None:
-            ans = mi.get(self._composite_name)
-            with self._lock:
-                self._render_cache[book_id] = ans
+            return self.__render_composite(book_id, mi, formatter, template_cache)
         return ans
 
     def clear_caches(self, book_ids=None):
@@ -275,9 +286,7 @@ class CompositeField(OneToOneField):
             ans = self._render_cache.get(book_id, None)
         if ans is None:
             mi = get_metadata(book_id)
-            ans = mi.get(self._composite_name)
-            with self._lock:
-                self._render_cache[book_id] = ans
+            return self.__render_composite(book_id, mi, mi.formatter, mi.template_cache)
         return ans
 
     def sort_keys_for_books(self, get_metadata, lang_map):
@@ -660,6 +669,24 @@ class SeriesField(ManyToOneField):
                 lang = c.most_common(1)[0][0]
         val = self.table.id_map[item_id]
         return title_sort(val, order=tss, lang=lang)
+
+    def iter_searchable_values_for_sort(self, candidates, lang_map, default_value=None):
+        cbm = self.table.col_book_map
+        sso = tweaks['title_series_sorting']
+        ts = title_sort
+        empty = set()
+        lang_map = {k:v[0] if v else None for k, v in lang_map.iteritems()}
+        for item_id, val in self.table.id_map.iteritems():
+            book_ids = cbm.get(item_id, empty).intersection(candidates)
+            if book_ids:
+                lang_counts = Counter()
+                for book_id in book_ids:
+                    lang = lang_map.get(book_id)
+                    if lang:
+                        lang_counts[lang[0]] += 1
+                lang = lang_counts.most_common(1)[0][0] if lang_counts else None
+                yield ts(val, order=sso, lang=lang), book_ids
+
 
 class TagsField(ManyToManyField):
 

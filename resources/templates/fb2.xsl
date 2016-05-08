@@ -1,4 +1,4 @@
-<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fb="http://www.gribuser.ru/xml/fictionbook/2.0">
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fb="__FB_NS__">
 <!--
 #########################################################################
 #                                                                       #
@@ -401,7 +401,6 @@
     <xsl:template match="fb:body/fb:image|fb:section/fb:image">
         <div align="center">
             <xsl:element name="img">
-                <xsl:attribute name="border">1</xsl:attribute>
                 <xsl:choose>
                     <xsl:when test="starts-with(@xlink:href,'#')">
                         <xsl:attribute name="src"><xsl:value-of select="substring-after(@xlink:href,'#')"/></xsl:attribute>

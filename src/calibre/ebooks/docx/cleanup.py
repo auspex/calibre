@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -8,7 +8,6 @@ __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import os
 
-from calibre.ebooks.docx.names import XPath
 NBSP = '\xa0'
 
 def mergeable(previous, current):
@@ -99,7 +98,7 @@ def before_count(root, tag, limit=10):
         if ans > limit:
             return limit
 
-def cleanup_markup(log, root, styles, dest_dir, detect_cover):
+def cleanup_markup(log, root, styles, dest_dir, detect_cover, XPath):
     # Move <hr>s outside paragraphs, if possible.
     pancestor = XPath('|'.join('ancestor::%s[1]' % x for x in ('p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6')))
     for hr in root.xpath('//span/hr'):
@@ -115,7 +114,7 @@ def cleanup_markup(log, root, styles, dest_dir, detect_cover):
 
     # Merge consecutive spans that have the same styling
     current_run = []
-    for span in root.xpath('//span[not(@style)]'):
+    for span in root.xpath('//span[not(@style or @lang)]'):
         if not current_run:
             current_run.append(span)
         else:
@@ -144,6 +143,8 @@ def cleanup_markup(log, root, styles, dest_dir, detect_cover):
                     parent.set('class', pclass)
                 parent.text = span.text
                 parent.remove(span)
+                if span.get('lang'):
+                    parent.set('lang', span.get('lang'))
                 for child in span:
                     parent.append(child)
 
@@ -159,7 +160,7 @@ def cleanup_markup(log, root, styles, dest_dir, detect_cover):
                 del span.attrib['class']
 
     # Get rid of <span>s that have no styling
-    for span in root.xpath('//span[not(@class) and not(@id) and not(@style)]'):
+    for span in root.xpath('//span[not(@class or @id or @style or @lang)]'):
         lift(span)
 
     # Convert <p><br style="page-break-after:always"> </p> style page breaks
@@ -180,11 +181,12 @@ def cleanup_markup(log, root, styles, dest_dir, detect_cover):
             img = img[0]
             path = os.path.join(dest_dir, img.get('src'))
             if os.path.exists(path) and before_count(root, img, limit=10) < 5:
-                from calibre.utils.magick.draw import identify
+                from calibre.utils.imghdr import identify
                 try:
-                    width, height, fmt = identify(path)
+                    with lopen(path, 'rb') as imf:
+                        fmt, width, height = identify(imf)
                 except:
-                    width, height, fmt = 0, 0, None
+                    width, height, fmt = 0, 0, None  # noqa
                 del fmt
                 try:
                     is_cover = 0.8 <= height/width <= 1.8 and height*width >= 160000

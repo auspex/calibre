@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 __license__   = 'GPL v3'
@@ -117,6 +117,10 @@ def thumbnail(data, width=120, height=120, bgcolor='#ffffff', fmt='jpg',
     img = Image()
     img.load(data)
     owidth, oheight = img.size
+    if width is None:
+        width = owidth
+    if height is None:
+        height = oheight
     if not preserve_aspect_ratio:
         scaled = owidth > width or oheight > height
         nwidth = width
@@ -138,13 +142,7 @@ def identify_data(data):
     or raises an Exception if data is not an image.
     '''
     img = Image()
-    if hasattr(img, 'identify'):
-        img.identify(data)
-    else:
-        img.load(data)
-    width, height = img.size
-    fmt = img.format
-    return (width, height, fmt)
+    return img.identify(data)
 
 def identify(path):
     '''
@@ -152,7 +150,8 @@ def identify(path):
     (width, height, format)
     or raises an Exception.
     '''
-    data = open(path, 'rb').read()
+    with lopen(path, 'rb') as f:
+        data = f.read()
     return identify_data(data)
 
 def add_borders_to_image(img_data, left=0, top=0, right=0, bottom=0,

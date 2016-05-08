@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -721,7 +721,7 @@ class MOBIFile(object):  # {{{
 
         self.index_header = self.index_record = None
         self.indexing_record_nums = set()
-        pir = self.mobi_header.primary_index_record
+        pir = getattr(self.mobi_header, 'primary_index_record', NULL_INDEX)
         if pir != NULL_INDEX:
             self.index_header = IndexHeader(self.records[pir])
             numi = self.index_header.index_count

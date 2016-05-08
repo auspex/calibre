@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -19,10 +19,10 @@ Also add eth1 to the auto line (use sudo ifup eth1 to start eth1 without rebooti
 
 sudo visudo (all no password actions for user)
 sudo apt-get install build-essential module-assistant vim zsh vim-scripts rsync \
-    htop nasm unzip libdbus-1-dev cmake libltdl-dev libudev-dev apt-file \
+    htop nasm unzip libdbus-1-dev cmake libltdl-dev libudev-dev apt-file p7zip \
     libdbus-glib-1-dev libcups2-dev "^libxcb.*" libx11-xcb-dev libglu1-mesa-dev \
     libxrender-dev flex bison gperf libasound2-dev libgstreamer0.10-dev \
-    libgstreamer-plugins-base0.10-dev libpulse-dev libgtk2.0-dev libffi-dev
+    libgstreamer-plugins-base0.10-dev libpulse-dev libgtk2.0-dev libffi-dev xcb-proto python-xcbgen dh-autoreconf
 apt-file update
 
 # For recent enough version of debian (>= sid) also install libxkbcommon-dev
@@ -67,18 +67,20 @@ arch = 'x86_64' if is64bit else 'i686'
 
 def binary_includes():
     return [
-    j(SW, 'bin', x) for x in ('pdftohtml', 'pdfinfo', 'pdftoppm')] + [
+    j(SW, 'bin', x) for x in ('pdftohtml', 'pdfinfo', 'pdftoppm', 'optipng')] + [
+
+    j(SW, 'private', 'mozjpeg', 'bin', x) for x in ('jpegtran', 'cjpeg')] + [
 
     j(SW, 'lib', 'lib' + x) for x in (
         'usb-1.0.so.0', 'mtp.so.9', 'expat.so.1', 'sqlite3.so.0',
-        'podofo.so.0.9.1', 'z.so.1', 'bz2.so.1.0', 'poppler.so.46',
+        'podofo.so.0.9.3', 'z.so.1', 'bz2.so.1.0', 'poppler.so.56',
         'iconv.so.2', 'xml2.so.2', 'xslt.so.1', 'jpeg.so.8', 'png16.so.16', 'webp.so.5',
-        'exslt.so.0', 'imobiledevice.so.4', 'usbmuxd.so.2', 'plist.so.2',
+        'exslt.so.0', 'imobiledevice.so.5', 'usbmuxd.so.4', 'plist.so.3',
         'MagickCore-6.Q16.so.2', 'MagickWand-6.Q16.so.2', 'ssl.so.1.0.0',
         'crypto.so.1.0.0', 'readline.so.6', 'chm.so.0', 'icudata.so.53',
         'icui18n.so.53', 'icuuc.so.53', 'icuio.so.53', 'python%s.so.1.0' % py_ver,
         'gcrypt.so.20', 'gpg-error.so.0', 'gobject-2.0.so.0', 'glib-2.0.so.0',
-        'gthread-2.0.so.0', 'gmodule-2.0.so.0', 'gio-2.0.so.0',
+        'gthread-2.0.so.0', 'gmodule-2.0.so.0', 'gio-2.0.so.0', 'dbus-glib-1.so.2',
     )] + [
 
     glob.glob('/lib/*/lib' + x)[-1] for x in (
@@ -384,7 +386,10 @@ class LinuxFreeze(Command):
                 except:
                     print ('WARNING: Failed to set default libc locale, using en_US.UTF-8')
                     locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
-                enc = locale.getdefaultlocale()[1]
+                try:
+                    enc = locale.getdefaultlocale()[1]
+                except Exception:
+                    enc = None
                 if not enc:
                     enc = locale.nl_langinfo(locale.CODESET)
                 if not enc or enc.lower() == 'ascii':
@@ -412,6 +417,17 @@ class LinuxFreeze(Command):
             def set_helper():
                 __builtin__.help = _Helper()
 
+            def setup_openssl_environment():
+                # Workaround for Linux distros that have still failed to get their heads
+                # out of their asses and implement a common location for SSL certificates.
+                # It's not that hard people, there exists a wonderful tool called the symlink
+                # See http://www.mobileread.com/forums/showthread.php?t=256095
+                if b'SSL_CERT_FILE' not in os.environ and b'SSL_CERT_DIR' not in os.environ:
+                    if os.access('/etc/pki/tls/certs/ca-bundle.crt', os.R_OK):
+                        os.environ['SSL_CERT_FILE'] = '/etc/pki/tls/certs/ca-bundle.crt'
+                    elif os.path.isdir('/etc/ssl/certs'):
+                        os.environ['SSL_CERT_DIR'] = '/etc/ssl/certs'
+
             def main():
                 try:
                     sys.argv[0] = sys.calibre_basename
@@ -420,6 +436,7 @@ class LinuxFreeze(Command):
                         sys.path.insert(0, os.path.abspath(dfv))
                     set_default_encoding()
                     set_helper()
+                    setup_openssl_environment()
                     mod = __import__(sys.calibre_module, fromlist=[1])
                     func = getattr(mod, sys.calibre_function)
                     return func()

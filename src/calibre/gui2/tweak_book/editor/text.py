@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -6,37 +6,46 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import re
+import re, importlib
 import textwrap, unicodedata
 from future_builtins import map
 
 import regex
 from PyQt5.Qt import (
     QPlainTextEdit, QFontDatabase, QToolTip, QPalette, QFont, QKeySequence,
-    QTextEdit, QTextFormat, QWidget, QSize, QPainter, Qt, QRect, pyqtSlot,
-    QApplication, QMimeData, QColor, QColorDialog, QTimer, pyqtSignal)
+    QTextEdit, QTextFormat, QWidget, QSize, QPainter, Qt, QRect, QColor,
+    QColorDialog, QTimer, pyqtSignal)
 
-from calibre import prepare_string_for_xml, xml_entity_to_unicode
-from calibre.constants import isosx
+from calibre import prepare_string_for_xml
 from calibre.gui2.tweak_book import tprefs, TOP
+from calibre.gui2.tweak_book.completion.popup import CompletionPopup
 from calibre.gui2.tweak_book.editor import (
     SYNTAX_PROPERTY, SPELL_PROPERTY, SPELL_LOCALE_PROPERTY, store_locale, LINK_PROPERTY)
 from calibre.gui2.tweak_book.editor.themes import get_theme, theme_color, theme_format
 from calibre.gui2.tweak_book.editor.syntax.base import SyntaxHighlighter
-from calibre.gui2.tweak_book.editor.syntax.html import HTMLHighlighter, XMLHighlighter
-from calibre.gui2.tweak_book.editor.syntax.css import CSSHighlighter
-from calibre.gui2.tweak_book.editor.smart import NullSmarts
-from calibre.gui2.tweak_book.editor.smart.html import HTMLSmarts
-from calibre.gui2.tweak_book.editor.smart.css import CSSSmarts
+from calibre.gui2.tweak_book.editor.smarts import NullSmarts
+from calibre.gui2.tweak_book.editor.snippets import SnippetManager
+from calibre.gui2.tweak_book.widgets import PlainTextEdit, PARAGRAPH_SEPARATOR
 from calibre.spell.break_iterator import index_of
 from calibre.utils.icu import safe_chr, string_length, capitalize, upper, lower, swapcase
 from calibre.utils.titlecase import titlecase
 
-PARAGRAPH_SEPARATOR = '\u2029'
-entity_pat = re.compile(r'&(#{0,1}[a-zA-Z0-9]{1,8});')
 
 def get_highlighter(syntax):
-    return {'html':HTMLHighlighter, 'css':CSSHighlighter, 'xml':XMLHighlighter}.get(syntax, SyntaxHighlighter)
+    if syntax:
+        try:
+            return importlib.import_module('calibre.gui2.tweak_book.editor.syntax.' + syntax).Highlighter
+        except (ImportError, AttributeError):
+            pass
+    return SyntaxHighlighter
+
+def get_smarts(syntax):
+    if syntax:
+        smartsname = {'xml':'html'}.get(syntax, syntax)
+        try:
+            return importlib.import_module('calibre.gui2.tweak_book.editor.smarts.' + smartsname).Smarts
+        except (ImportError, AttributeError):
+            pass
 
 _dff = None
 def default_font_family():
@@ -63,66 +72,6 @@ class LineNumbers(QWidget):  # {{{
         self.parent().paint_line_numbers(ev)
 # }}}
 
-class PlainTextEdit(QPlainTextEdit):
-
-    ''' A class that overrides some methods from QPlainTextEdit to fix handling
-    of the nbsp unicode character. '''
-
-    def __init__(self, parent=None):
-        QPlainTextEdit.__init__(self, parent)
-        self.selectionChanged.connect(self.selection_changed)
-
-    def toPlainText(self):
-        # QPlainTextEdit's toPlainText implementation replaces nbsp with normal
-        # space, so we re-implement it using QTextCursor, which does not do
-        # that
-        c = self.textCursor()
-        c.clearSelection()
-        c.movePosition(c.Start)
-        c.movePosition(c.End, c.KeepAnchor)
-        ans = c.selectedText().replace(PARAGRAPH_SEPARATOR, '\n')
-        # QTextCursor pads the return value of selectedText with null bytes if
-        # non BMP characters such as 0x1f431 are present.
-        return ans.rstrip('\0')
-
-    @pyqtSlot()
-    def copy(self):
-        # Workaround Qt replacing nbsp with normal spaces on copy
-        c = self.textCursor()
-        if not c.hasSelection():
-            return
-        md = QMimeData()
-        md.setText(self.selected_text)
-        QApplication.clipboard().setMimeData(md)
-
-    @pyqtSlot()
-    def cut(self):
-        # Workaround Qt replacing nbsp with normal spaces on copy
-        self.copy()
-        self.textCursor().removeSelectedText()
-
-    def selected_text_from_cursor(self, cursor):
-        return unicodedata.normalize('NFC', unicode(cursor.selectedText()).replace(PARAGRAPH_SEPARATOR, '\n').rstrip('\0'))
-
-    @property
-    def selected_text(self):
-        return self.selected_text_from_cursor(self.textCursor())
-
-    def selection_changed(self):
-        # Workaround Qt replacing nbsp with normal spaces on copy
-        clipboard = QApplication.clipboard()
-        if clipboard.supportsSelection() and self.textCursor().hasSelection():
-            md = QMimeData()
-            md.setText(self.selected_text)
-            clipboard.setMimeData(md, clipboard.Selection)
-
-    def event(self, ev):
-        if ev.type() == ev.ShortcutOverride and ev in (QKeySequence.Copy, QKeySequence.Cut):
-            ev.accept()
-            (self.copy if ev == QKeySequence.Copy else self.cut)()
-            return True
-        return QPlainTextEdit.event(self, ev)
-
 class TextEdit(PlainTextEdit):
 
     link_clicked = pyqtSignal(object)
@@ -130,8 +79,18 @@ class TextEdit(PlainTextEdit):
 
     def __init__(self, parent=None, expected_geometry=(100, 50)):
         PlainTextEdit.__init__(self, parent)
+        self.snippet_manager = SnippetManager(self)
+        self.completion_popup = CompletionPopup(self)
+        self.request_completion = self.completion_doc_name = None
+        self.clear_completion_cache_timer = t = QTimer(self)
+        t.setInterval(5000), t.timeout.connect(self.clear_completion_cache), t.setSingleShot(True)
+        self.textChanged.connect(t.start)
+        self.last_completion_request = -1
+        self.gutter_width = 0
+        self.tw = 2
         self.expected_geometry = expected_geometry
         self.saved_matches = {}
+        self.syntax = None
         self.smarts = NullSmarts(self)
         self.current_cursor_line = None
         self.current_search_mark = None
@@ -144,7 +103,6 @@ class TextEdit(PlainTextEdit):
         self.cursorPositionChanged.connect(self.highlight_cursor_line)
         self.blockCountChanged[int].connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
-        self.syntax = None
 
     @dynamic_property
     def is_modified(self):
@@ -161,12 +119,14 @@ class TextEdit(PlainTextEdit):
 
     def apply_settings(self, prefs=None, dictionaries_changed=False):  # {{{
         prefs = prefs or tprefs
+        self.setAcceptDrops(prefs.get('editor_accepts_drops', True))
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth if prefs['editor_line_wrap'] else QPlainTextEdit.NoWrap)
         theme = get_theme(prefs['editor_theme'])
         self.apply_theme(theme)
         w = self.fontMetrics()
         self.space_width = w.width(' ')
-        self.setTabStopWidth(prefs['editor_tab_stop_width'] * self.space_width)
+        self.tw = self.smarts.override_tab_stop_width if self.smarts.override_tab_stop_width is not None else prefs['editor_tab_stop_width']
+        self.setTabStopWidth(self.tw * self.space_width)
         if dictionaries_changed:
             self.highlighter.rehighlight()
 
@@ -202,6 +162,7 @@ class TextEdit(PlainTextEdit):
         self.size_hint = QSize(self.expected_geometry[0] * w.averageCharWidth(), self.expected_geometry[1] * w.height())
         self.highlight_color = theme_color(theme, 'HighlightRegion', 'bg')
         self.highlight_cursor_line()
+        self.completion_popup.clear_caches(), self.completion_popup.update()
     # }}}
 
     def load_text(self, text, syntax='html', process_template=False, doc_name=None):
@@ -209,10 +170,13 @@ class TextEdit(PlainTextEdit):
         self.highlighter = get_highlighter(syntax)()
         self.highlighter.apply_theme(self.theme)
         self.highlighter.set_document(self.document(), doc_name=doc_name)
-        sclass = {'html':HTMLSmarts, 'xml':HTMLSmarts, 'css':CSSSmarts}.get(syntax, None)
+        sclass = get_smarts(syntax)
         if sclass is not None:
             self.smarts = sclass(self)
-        self.setPlainText(unicodedata.normalize('NFC', text))
+            if self.smarts.override_tab_stop_width is not None:
+                self.tw = self.smarts.override_tab_stop_width
+                self.setTabStopWidth(self.tw * self.space_width)
+        self.setPlainText(unicodedata.normalize('NFC', unicode(text)))
         if process_template and QPlainTextEdit.find(self, '%CURSOR%'):
             c = self.textCursor()
             c.insertText('')
@@ -233,8 +197,8 @@ class TextEdit(PlainTextEdit):
         self.setTextCursor(c)
         self.ensureCursorVisible()
 
-    def simple_replace(self, text):
-        c = self.textCursor()
+    def simple_replace(self, text, cursor=None):
+        c = cursor or self.textCursor()
         c.insertText(unicodedata.normalize('NFC', text))
         self.setTextCursor(c)
 
@@ -267,7 +231,7 @@ class TextEdit(PlainTextEdit):
             sel.append(self.current_cursor_line)
         if self.current_search_mark is not None:
             sel.append(self.current_search_mark)
-        if instant and not self.highlighter.has_requests:
+        if instant and not self.highlighter.has_requests and self.smarts is not None:
             sel.extend(self.smarts.get_extra_selections(self))
             self.smart_highlighting_updated.emit()
         else:
@@ -342,7 +306,15 @@ class TextEdit(PlainTextEdit):
         if template is None:
             count = len(pat.findall(raw))
         else:
+            from calibre.gui2.tweak_book.function_replace import Function
+            repl_is_func = isinstance(template, Function)
+            if repl_is_func:
+                template.init_env()
             raw, count = pat.subn(template, raw)
+            if repl_is_func:
+                from calibre.gui2.tweak_book.search import show_function_debug_output
+                template.end()
+                show_function_debug_output(template)
             if count > 0:
                 start_pos = min(c.anchor(), c.position())
                 c.insertText(raw)
@@ -350,6 +322,10 @@ class TextEdit(PlainTextEdit):
                 c.setPosition(start_pos), c.setPosition(end_pos, c.KeepAnchor)
                 self.update_extra_selections()
         return count
+
+    def smart_comment(self):
+        from calibre.gui2.tweak_book.editor.comments import smart_comment
+        smart_comment(self, self.syntax)
 
     def find(self, pat, wrap=False, marked=False, complete=False, save_match=None):
         if marked:
@@ -455,7 +431,10 @@ class TextEdit(PlainTextEdit):
                     m = saved
         if m is None:
             return False
-        text = m.expand(template)
+        if callable(template):
+            text = template(m)
+        else:
+            text = m.expand(template)
         c.insertText(text)
         return True
 
@@ -499,7 +478,8 @@ class TextEdit(PlainTextEdit):
         self.line_number_area.update(0, top, self.line_number_area.width(), height)
 
     def update_line_number_area_width(self, block_count=0):
-        self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+        self.gutter_width = self.line_number_area_width()
+        self.setViewportMargins(self.gutter_width, 0, 0, 0)
 
     def line_number_area_width(self):
         digits = 1
@@ -558,18 +538,18 @@ class TextEdit(PlainTextEdit):
             self.show_tooltip(ev)
             return True
         if ev.type() == ev.ShortcutOverride:
-            if ev in (
-                # Let the global cut/copy/paste shortcuts work,this avoids the nbsp
-                # problem as well, since they use the overridden copy() method
-                # instead of the one from Qt
-                QKeySequence.Copy, QKeySequence.Cut, QKeySequence.Paste,
-            ) or (
-                # This is used to convert typed hex codes into unicode
-                # characters
-                ev.key() == Qt.Key_X and ev.modifiers() == Qt.AltModifier
-            ):
+            # Let the global cut/copy/paste/undo/redo shortcuts work, this avoids the nbsp
+            # problem as well, since they use the overridden copy() method
+            # instead of the one from Qt, and allows proper customization
+            # of the shortcuts
+            if ev in (QKeySequence.Copy, QKeySequence.Cut, QKeySequence.Paste, QKeySequence.Undo, QKeySequence.Redo):
                 ev.ignore()
-                return False
+                return True
+            # This is used to convert typed hex codes into unicode
+            # characters
+            if ev.key() == Qt.Key_X and ev.modifiers() == Qt.AltModifier:
+                ev.accept()
+                return True
         return QPlainTextEdit.event(self, ev)
 
     def text_for_range(self, block, r):
@@ -583,7 +563,7 @@ class TextEdit(PlainTextEdit):
             formats = self.highlighter.parse_single_block(c.block())[0]
         pos = c.positionInBlock()
         for r in formats:
-            if r.start <= pos < r.start + r.length and r.format.property(SPELL_PROPERTY):
+            if r.start <= pos <= r.start + r.length and r.format.property(SPELL_PROPERTY):
                 return r.format.property(SPELL_LOCALE_PROPERTY)
 
     def recheck_word(self, word, locale):
@@ -603,7 +583,7 @@ class TextEdit(PlainTextEdit):
             return
         pos = cursor.positionInBlock()
         for r in cursor.block().layout().additionalFormats():
-            if r.start <= pos < r.start + r.length and r.format.property(SYNTAX_PROPERTY):
+            if r.start <= pos <= r.start + r.length and r.format.property(SYNTAX_PROPERTY):
                 return r
 
     def syntax_format_for_cursor(self, cursor):
@@ -630,6 +610,10 @@ class TextEdit(PlainTextEdit):
             return self.text_for_range(c.block(), r)
 
     def mousePressEvent(self, ev):
+        if self.completion_popup.isVisible() and not self.completion_popup.rect().contains(ev.pos()):
+            # For some reason using eventFilter for this does not work, so we
+            # implement it here
+            self.completion_popup.abort()
         if ev.modifiers() & Qt.CTRL:
             url = self.link_for_position(ev.pos())
             if url is not None:
@@ -698,7 +682,7 @@ class TextEdit(PlainTextEdit):
             c.setPosition(c.position() - len(suffix))
         self.setTextCursor(c)
 
-    def insert_image(self, href):
+    def insert_image(self, href, fullpage=False, preserve_aspect_ratio=False):
         c = self.textCursor()
         template, alt = 'url(%s)', ''
         left = min(c.position(), c.anchor)
@@ -706,12 +690,20 @@ class TextEdit(PlainTextEdit):
             left, right = self.get_range_inside_tag()
             c.setPosition(left)
             c.setPosition(right, c.KeepAnchor)
-            alt = _('Image')
-            template = '<img alt="{0}" src="%s" />'.format(alt)
             href = prepare_string_for_xml(href, True)
+            if fullpage:
+                template =  '''\
+<div style="page-break-before:always; page-break-after:always; page-break-inside:avoid">\
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" \
+version="1.1" width="100%%" height="100%%" viewBox="0 0 1200 1600" preserveAspectRatio="{}">\
+<image width="1200" height="1600" xlink:href="%s"/>\
+</svg></div>'''.format('xMidYMid meet' if preserve_aspect_ratio else 'none')
+            else:
+                alt = _('Image')
+                template = '<img alt="{0}" src="%s" />'.format(alt)
         text = template % href
         c.insertText(text)
-        if self.syntax == 'html':
+        if self.syntax == 'html' and not fullpage:
             c.setPosition(left + 10)
             c.setPosition(c.position() + len(alt), c.KeepAnchor)
         else:
@@ -736,14 +728,40 @@ class TextEdit(PlainTextEdit):
             self.setOverwriteMode(self.overwriteMode() ^ True)
             ev.accept()
             return
-        if isosx and ev.modifiers() == Qt.ControlModifier and re.search(r'[a-zA-Z0-9]+', ev.text()) is not None:
-            # For some reason Qt 5 translates Cmd+key into text on OS X
-            # https://bugreports.qt-project.org/browse/QTBUG-36281
-            ev.setAccepted(False)
+        if self.snippet_manager.handle_key_press(ev):
+            self.completion_popup.hide()
+            return
+        if self.smarts.handle_key_press(ev, self):
+            self.handle_keypress_completion(ev)
             return
         QPlainTextEdit.keyPressEvent(self, ev)
-        if (ev.key() == Qt.Key_Semicolon or ';' in unicode(ev.text())) and tprefs['replace_entities_as_typed'] and self.syntax == 'html':
-            self.replace_possible_entity()
+        self.handle_keypress_completion(ev)
+
+    def handle_keypress_completion(self, ev):
+        if self.request_completion is None:
+            return
+        code = ev.key()
+        if code in (
+            0, Qt.Key_unknown, Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt,
+            Qt.Key_Meta, Qt.Key_AltGr, Qt.Key_CapsLock, Qt.Key_NumLock,
+            Qt.Key_ScrollLock, Qt.Key_Up, Qt.Key_Down):
+            # We ignore up/down arrow so as to not break scrolling through the
+            # text with the arrow keys
+            return
+        result = self.smarts.get_completion_data(self, ev)
+        if result is None:
+            self.last_completion_request += 1
+        else:
+            self.last_completion_request = self.request_completion(*result)
+        self.completion_popup.mark_completion(self, None if result is None else result[-1])
+
+    def handle_completion_result(self, result):
+        if result.request_id[0] >= self.last_completion_request:
+            self.completion_popup.handle_result(result)
+
+    def clear_completion_cache(self):
+        if self.request_completion is not None and self.completion_doc_name:
+            self.request_completion(None, 'file:' + self.completion_doc_name)
 
     def replace_possible_unicode_sequence(self):
         c = self.textCursor()
@@ -768,19 +786,6 @@ class TextEdit(PlainTextEdit):
         c.insertText(safe_chr(num))
         return True
 
-    def replace_possible_entity(self):
-        c = self.textCursor()
-        c.setPosition(c.position() - min(c.positionInBlock(), 10), c.KeepAnchor)
-        text = unicode(c.selectedText()).rstrip('\0')
-        m = entity_pat.search(text)
-        if m is None:
-            return
-        ent = m.group()
-        repl = xml_entity_to_unicode(m)
-        if repl != ent:
-            c.setPosition(c.position() + m.start(), c.KeepAnchor)
-            c.insertText(repl)
-
     def select_all(self):
         c = self.textCursor()
         c.clearSelection()
@@ -804,7 +809,7 @@ class TextEdit(PlainTextEdit):
             return self.selected_text_from_cursor(c)
 
     def goto_css_rule(self, rule_address, sourceline_address=None):
-        from calibre.gui2.tweak_book.editor.smart.css import find_rule
+        from calibre.gui2.tweak_book.editor.smarts.css import find_rule
         block = None
         if self.syntax == 'css':
             raw = unicode(self.toPlainText())

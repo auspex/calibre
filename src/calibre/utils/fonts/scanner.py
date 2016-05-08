@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -100,7 +100,10 @@ def font_dirs():
         winutil, err = plugins['winutil']
         if err:
             raise RuntimeError('Failed to load winutil: %s'%err)
-        return [winutil.special_folder_path(winutil.CSIDL_FONTS)]
+        try:
+            return [winutil.special_folder_path(winutil.CSIDL_FONTS)]
+        except ValueError:
+            return [r'C:\Windows\Fonts']
     if isosx:
         return [
                 '/Library/Fonts',
@@ -112,7 +115,7 @@ def font_dirs():
                 ]
     return fc_list()
 
-class Scanner(Thread):
+class FontScanner(Thread):
 
     CACHE_VERSION = 1
 
@@ -380,7 +383,7 @@ class Scanner(Thread):
                 prints()
             prints()
 
-font_scanner = Scanner()
+font_scanner = FontScanner()
 font_scanner.start()
 
 def force_rescan():

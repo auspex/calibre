@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -120,7 +120,7 @@ content_tokens = [(re.compile(k), v, n) for k, v, n in [
 
     (r'\#[a-zA-Z0-9]{1,6}', 'number', 'hexnumber'),
 
-    (r'[\.-]?[0-9]*[\.]?[0-9]+(em|px|pt|pc|in|mm|cm|ex|s|rem)\b', 'number', 'dimension'),
+    (r'[\.-]?[0-9]*[\.]?[0-9]+(em|px|pt|pc|in|mm|cm|ex|q|rem)\b', 'number', 'dimension'),
 
     (r'[\.-]?[0-9]*[\.]?[0-9]+%(?=$|[ \n\t\f\r;}{()\[\]])', 'number', 'dimension'),
 
@@ -306,7 +306,7 @@ def create_formats(highlighter):
     return formats
 
 
-class CSSHighlighter(SyntaxHighlighter):
+class Highlighter(SyntaxHighlighter):
 
     state_map = state_map
     create_formats_func = create_formats

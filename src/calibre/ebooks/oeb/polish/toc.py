@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -90,6 +90,13 @@ class TOC(object):
 
     def __str__(self):
         return b'\n'.join([x.encode('utf-8') for x in self.get_lines()])
+
+    @property
+    def as_dict(self):
+        return {
+            'title':self.title, 'dest':self.dest, 'frag':self.frag, 'dest_exists':self.dest_exists, 'dest_error':self.dest_error,
+            'children':[c.as_dict for c in self.children]
+        }
 
 def child_xpath(tag, name):
     return tag.xpath('./*[calibre:lower-case(local-name()) = "%s"]'%name)
@@ -495,22 +502,7 @@ def find_inline_toc(container):
         if container.parsed(name).xpath('//*[local-name()="body" and @id="calibre_generated_inline_toc"]'):
             return name
 
-def create_inline_toc(container, title=None):
-    '''
-    Create an inline (HTML) Table of Contents from an existing NCX table of contents.
-
-    :param title: The title for this table of contents.
-    '''
-    lang = get_book_language(container)
-    default_title = 'Table of Contents'
-    if lang:
-        lang = lang_as_iso639_1(lang) or lang
-        default_title = translate(lang, default_title)
-    title = title or default_title
-    toc = get_toc(container)
-    if len(toc) == 0:
-        return None
-    toc_name = find_inline_toc(container)
+def toc_to_html(toc, container, toc_name, title, lang=None):
 
     def process_node(html_parent, toc, level=1, indent='  ', style_level=2):
         li = html_parent.makeelement(XHTML('li'))
@@ -540,10 +532,7 @@ def create_inline_toc(container, title=None):
     html = E.html(
         E.head(
             E.title(title),
-            E.style('''
-                li { list-style-type: none; padding-left: 2em; margin-left: 0}
-                a { text-decoration: none }
-                a:hover { color: red }''', type='text/css'),
+            E.style(P('templates/inline_toc_styles.css', data=True), type='text/css'),
         ),
         E.body(
             E.h2(title),
@@ -552,7 +541,6 @@ def create_inline_toc(container, title=None):
         )
     )
 
-    name = toc_name
     ul = html[1][1]
     ul.set('class', 'level1')
     for child in toc:
@@ -560,6 +548,27 @@ def create_inline_toc(container, title=None):
     if lang:
         html.set('lang', lang)
     pretty_html_tree(container, html)
+    return html
+
+def create_inline_toc(container, title=None):
+    '''
+    Create an inline (HTML) Table of Contents from an existing NCX table of contents.
+
+    :param title: The title for this table of contents.
+    '''
+    lang = get_book_language(container)
+    default_title = 'Table of Contents'
+    if lang:
+        lang = lang_as_iso639_1(lang) or lang
+        default_title = translate(lang, default_title)
+    title = title or default_title
+    toc = get_toc(container)
+    if len(toc) == 0:
+        return None
+    toc_name = find_inline_toc(container)
+
+    name = toc_name
+    html = toc_to_html(toc, container, name, title, lang)
     raw = serialize(html, 'text/html')
     if name is None:
         name, c = 'toc.xhtml', 0

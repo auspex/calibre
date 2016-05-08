@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -176,7 +176,8 @@ def pretty_html_tree(container, root):
         # with all content. In this case we prettify the containing block tag
         # even if it has non block children.
         if (len(body) == 1 and not callable(body[0].tag) and isblock(body[0]) and
-                not has_only_blocks(body[0]) and barename(body[0].tag) != 'pre' and len(body[0]) > 0):
+                not has_only_blocks(body[0]) and barename(body[0].tag) not in (
+                    'pre', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6') and len(body[0]) > 0):
             pretty_block(body[0], level=2)
 
     if container is not None:
@@ -185,7 +186,7 @@ def pretty_html_tree(container, root):
             pretty_script_or_style(container, child)
 
 def fix_html(container, raw):
-    ' Fix any parsing errors in the HTML represented as a string in raw. Fixing is done using the HTML 5 parsing algorithm. '
+    ' Fix any parsing errors in the HTML represented as a string in raw. Fixing is done using the HTML5 parsing algorithm. '
     root = container.parse_xhtml(raw)
     return serialize(root, 'text/html')
 
@@ -209,7 +210,7 @@ def pretty_xml(container, name, raw):
     return serialize(root, 'text/xml')
 
 def fix_all_html(container):
-    ' Fix any parsing errors in all HTML files in the container. Fixing is done using the HTML 5 parsing algorithm. '
+    ' Fix any parsing errors in all HTML files in the container. Fixing is done using the HTML5 parsing algorithm. '
     for name, mt in container.mime_map.iteritems():
         if mt in OEB_DOCS:
             container.parsed(name)

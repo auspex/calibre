@@ -1,21 +1,22 @@
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import re, binascii, cPickle
+import re, binascii, cPickle, ssl, json
 from future_builtins import map
+from threading import Thread, Event
 
-from PyQt5.Qt import (QThread, pyqtSignal, Qt, QUrl, QDialog, QGridLayout,
+from PyQt5.Qt import (QObject, pyqtSignal, Qt, QUrl, QDialog, QGridLayout,
         QLabel, QCheckBox, QDialogButtonBox, QIcon, QPixmap)
-import mechanize
 
 from calibre.constants import (__appname__, __version__, iswindows, isosx,
         isportable, is64bit, numeric_version)
-from calibre import browser, prints, as_unicode
+from calibre import prints, as_unicode
 from calibre.utils.config import prefs
+from calibre.utils.https import get_https_resource_securely
 from calibre.gui2 import config, dynamic, open_url
 from calibre.gui2.dialogs.plugin_updater import get_plugin_updates_available
 
-URL = 'http://status.calibre-ebook.com/latest'
+URL = 'https://code.calibre-ebook.com/latest'
 # URL = 'http://localhost:8000/latest'
 NO_CALIBRE_UPDATE = (0, 0, 0)
 
@@ -27,13 +28,26 @@ def get_download_url():
     return 'http://calibre-ebook.com/download_' + which
 
 def get_newest_version():
-    br = browser()
-    req = mechanize.Request(URL)
-    req.add_header('CALIBRE_VERSION', __version__)
-    req.add_header('CALIBRE_OS',
-            'win' if iswindows else 'osx' if isosx else 'oth')
-    req.add_header('CALIBRE_INSTALL_UUID', prefs['installation_uuid'])
-    version = br.open(req).read().strip()
+    try:
+        icon_theme_name = json.loads(I('icon-theme.json', data=True))['name']
+    except Exception:
+        icon_theme_name = ''
+    headers={
+        'CALIBRE-VERSION':__version__,
+        'CALIBRE-OS': ('win' if iswindows else 'osx' if isosx else 'oth'),
+        'CALIBRE-INSTALL-UUID': prefs['installation_uuid'],
+        'CALIBRE-ICON-THEME': icon_theme_name,
+    }
+    try:
+        version = get_https_resource_securely(URL, headers=headers)
+    except ssl.SSLError as err:
+        if getattr(err, 'reason', None) != 'CERTIFICATE_VERIFY_FAILED':
+            raise
+        # certificate verification failed, since the version check contains no
+        # critical information, ignore and proceed
+        # We have to do this as if the calibre CA certificate ever
+        # needs to be revoked, then we wont be able to do version checks
+        version = get_https_resource_securely(URL, headers=headers, cacerts=None)
     try:
         version = version.decode('utf-8').strip()
     except UnicodeDecodeError:
@@ -44,16 +58,22 @@ def get_newest_version():
         ans = tuple(map(int, (m.group(1), m.group(2), m.group(3))))
     return ans
 
-class CheckForUpdates(QThread):
+class Signal(QObject):
 
     update_found = pyqtSignal(object, object)
-    INTERVAL = 24*60*60
+
+class CheckForUpdates(Thread):
+
+    INTERVAL = 24*60*60  # seconds
+    daemon = True
 
     def __init__(self, parent):
-        QThread.__init__(self, parent)
+        Thread.__init__(self)
+        self.shutdown_event = Event()
+        self.signal = Signal(parent)
 
     def run(self):
-        while True:
+        while not self.shutdown_event.is_set():
             calibre_update_version = NO_CALIBRE_UPDATE
             plugins_update_found = 0
             try:
@@ -69,8 +89,11 @@ class CheckForUpdates(QThread):
             except Exception as e:
                 prints('Failed to check for plugin update:', as_unicode(e))
             if calibre_update_version != NO_CALIBRE_UPDATE or plugins_update_found > 0:
-                self.update_found.emit(calibre_update_version, plugins_update_found)
-            self.sleep(self.INTERVAL)
+                self.signal.update_found.emit(calibre_update_version, plugins_update_found)
+            self.shutdown_event.wait(self.INTERVAL)
+
+    def shutdown(self):
+        self.shutdown_event.set()
 
 class UpdateNotification(QDialog):
 
@@ -141,7 +164,7 @@ class UpdateMixin(object):
         self.last_newest_calibre_version = NO_CALIBRE_UPDATE
         if not opts.no_update_check:
             self.update_checker = CheckForUpdates(self)
-            self.update_checker.update_found.connect(self.update_found,
+            self.update_checker.signal.update_found.connect(self.update_found,
                     type=Qt.QueuedConnection)
             self.update_checker.start()
 
@@ -210,3 +233,8 @@ class UpdateMixin(object):
             calibre_version, number_of_plugin_updates = cPickle.loads(binascii.unhexlify(url[len('update:'):]))
             self.update_found(calibre_version, number_of_plugin_updates, force=True)
 
+if __name__ == '__main__':
+    from calibre.gui2 import Application
+    app = Application([])
+    UpdateNotification('x.y.z', False).exec_()
+    del app

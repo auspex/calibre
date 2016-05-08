@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 __license__   = 'GPL v3'
@@ -8,6 +8,7 @@ __docformat__ = 'restructuredtext en'
 import os
 
 from calibre.constants import plugins, filesystem_encoding
+from calibre.utils.img import get_pixel_map, image_and_format_from_data
 
 _magick, _merr = plugins['magick']
 
@@ -22,6 +23,11 @@ _type_map = dict([(getattr(_magick, x), x) for x in dir(_magick) if
 
 _colorspace_map = dict([(getattr(_magick, x), x) for x in dir(_magick) if
     x.endswith('Colorspace')])
+
+def qimage_to_magick(img):
+    ans = Image()
+    ans.from_qimage(img)
+    return ans
 
 # Font metrics {{{
 class Rect(object):
@@ -122,31 +128,57 @@ class DrawingWand(_magick.DrawingWand):  # {{{
 
 class Image(_magick.Image):  # {{{
 
+    read_format = None
+
     @property
     def clone(self):
         ans = Image()
         ans.copy(self)
         return ans
 
+    def from_qimage(self, img):
+        from PyQt5.Qt import QImage
+        fmt = get_pixel_map()
+        if not img.hasAlphaChannel():
+            if img.format() != img.Format_RGB32:
+                img = img.convertToFormat(QImage.Format_RGB32)
+            fmt = fmt.replace('A', 'P')
+        else:
+            if img.format() != img.Format_ARGB32:
+                img = img.convertToFormat(QImage.Format_ARGB32)
+        raw = img.constBits().ascapsule()
+        self.constitute(img.width(), img.height(), fmt, raw)
+
+    def to_qimage(self):
+        from PyQt5.Qt import QImage, QByteArray
+        fmt = get_pixel_map()
+        # ImageMagick can only output raw data in some formats that can be
+        # read into QImage directly, if the QImage format is not one of those, use
+        # PNG
+        if fmt in {'RGBA', 'BGRA'}:
+            w, h = self.size
+            self.depth = 8  # QImage expects 8bpp
+            raw = self.export(fmt)
+            i = QImage(raw, w, h, QImage.Format_ARGB32)
+            del raw  # According to the documentation, raw is supposed to not be deleted, but it works, so make it explicit
+            return i
+        else:
+            raw = self.export('PNG')
+            return QImage.fromData(QByteArray(raw), 'PNG')
+
     def load(self, data):
         if not data:
             raise ValueError('Cannot open image from empty data string')
-        data = bytes(data)
-        return _magick.Image.load(self, data)
+        img, self.read_format = image_and_format_from_data(data)
+        self.from_qimage(img)
 
     def open(self, path_or_file):
-        if not hasattr(path_or_file, 'read') and \
-            path_or_file.lower().endswith('.wmf'):
-            # Special handling for WMF files as ImageMagick seems
-            # to hang while reading them from a blob on linux
-            if isinstance(path_or_file, unicode):
-                path_or_file = path_or_file.encode(filesystem_encoding)
-            return _magick.Image.read(self, path_or_file)
         data = path_or_file
         if hasattr(data, 'read'):
             data = data.read()
         else:
-            data = open(data, 'rb').read()
+            with lopen(data, 'rb') as f:
+                data = f.read()
         if not data:
             raise ValueError('%r is an empty file'%path_or_file)
         self.load(data)
@@ -154,6 +186,8 @@ class Image(_magick.Image):  # {{{
     @dynamic_property
     def format(self):
         def fget(self):
+            if self.format_ is None:
+                return self.read_format
             return self.format_.decode('utf-8', 'ignore').lower()
         def fset(self, val):
             self.format_ = str(val)
@@ -236,6 +270,10 @@ class Image(_magick.Image):  # {{{
         colorspace = getattr(_magick, colorspace)
         _magick.Image.quantize(self, number_colors, colorspace, treedepth, dither,
                 measure_error)
+
+    def identify(self, data):
+        img, fmt = image_and_format_from_data(data)
+        return img.width(), img.height(), fmt
 
     def trim(self, fuzz):
         try:

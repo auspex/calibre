@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -8,19 +8,23 @@ __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import sys, weakref
 from functools import wraps
+from io import BytesIO
 
 from PyQt5.Qt import (
     QWidget, QPainter, QColor, QApplication, Qt, QPixmap, QRectF, QTransform,
-    QPointF, QPen, pyqtSignal, QUndoCommand, QUndoStack, QIcon, QImage, QByteArray)
+    QPointF, QPen, pyqtSignal, QUndoCommand, QUndoStack, QIcon, QImage,
+    QImageWriter)
 
 from calibre import fit_image
 from calibre.gui2 import error_dialog, pixmap_to_data
 from calibre.gui2.dnd import (
     IMAGE_EXTENSIONS, dnd_has_extension, dnd_has_image, dnd_get_image, DownloadDialog)
 from calibre.gui2.tweak_book import capitalize
-from calibre.utils.config_base import tweaks
-from calibre.utils.magick import Image
-from calibre.utils.magick.draw import identify_data
+from calibre.utils.imghdr import identify
+from calibre.utils.img import (
+    remove_borders, gaussian_sharpen, gaussian_blur, image_to_data, despeckle,
+    normalize, oil_paint
+)
 
 def painter(func):
     @wraps(func)
@@ -79,50 +83,6 @@ def get_selection_rect(img, sr, target):
     bottom_border = (abs(target.bottom() - sr.bottom())/target.height()) * img.height()
     return left_border, top_border, img.width() - left_border - right_border, img.height() - top_border - bottom_border
 
-_qimage_pixel_map = None
-def get_pixel_map():
-    ' Get the order of pixels in QImage (RGBA or BGRA usually) '
-    global _qimage_pixel_map
-    if _qimage_pixel_map is None:
-        i = QImage(1, 1, QImage.Format_ARGB32)
-        i.fill(QColor(0, 1, 2, 3))
-        raw = bytearray(i.constBits().asstring(4))
-        _qimage_pixel_map = {c:raw.index(x) for c, x in zip('RGBA', b'\x00\x01\x02\x03')}
-        _qimage_pixel_map = ''.join(sorted(_qimage_pixel_map, key=_qimage_pixel_map.get))
-    return _qimage_pixel_map
-
-def qimage_to_magick(img):
-    ans = Image()
-    fmt = get_pixel_map()
-    if not img.hasAlphaChannel():
-        if img.format() != img.Format_RGB32:
-            img = QImage(img)
-            img.setFormat(QImage.Format_RGB32)
-        fmt = fmt.replace('A', 'P')
-    else:
-        if img.format() != img.Format_ARGB32:
-            img = QImage(img)
-            img.setFormat(img.Format_ARGB32)
-    raw = img.constBits().ascapsule()
-    ans.constitute(img.width(), img.height(), fmt, raw)
-    return ans
-
-def magick_to_qimage(img):
-    fmt = get_pixel_map()
-    # ImageMagick can only output raw data in some formats that can be
-    # read into QImage directly, if the QImage format is not one of those, use
-    # PNG
-    if fmt in {'RGBA', 'BGRA'}:
-        w, h = img.size
-        img.depth = 8  # QImage expects 8bpp
-        raw = img.export(fmt)
-        i = QImage(raw, w, h, QImage.Format_ARGB32)
-        del raw  # According to the documentation, raw is supposed to not be deleted, but it works, so make it explicit
-        return i
-    else:
-        raw = img.export('PNG')
-        return QImage.fromData(QByteArray(raw), 'PNG')
-
 class Trim(Command):
 
     ''' Remove the areas of the image outside the current selection. '''
@@ -141,10 +101,7 @@ class AutoTrim(Trim):
     TEXT = _('Auto-trim image')
 
     def __call__(self, canvas):
-        img = canvas.current_image
-        i = qimage_to_magick(img)
-        i.trim(tweaks['cover_trim_fuzz_value'])
-        return magick_to_qimage(i)
+        return remove_borders(canvas.current_image)
 
 class Rotate(Command):
 
@@ -178,25 +135,40 @@ class Sharpen(Command):
         Command.__init__(self, canvas)
 
     def __call__(self, canvas):
-        img = canvas.current_image
-        i = qimage_to_magick(img)
-        getattr(i, self.FUNC)(0.0, self.sigma)
-        return magick_to_qimage(i)
+        return gaussian_sharpen(canvas.current_image, sigma=self.sigma)
 
 class Blur(Sharpen):
 
     TEXT = _('Blur image')
     FUNC = 'blur'
 
+    def __call__(self, canvas):
+        return gaussian_blur(canvas.current_image, sigma=self.sigma)
+
+class Oilify(Command):
+
+    TEXT = _('Make image look like an oil painting')
+
+    def __init__(self, radius, canvas):
+        self.radius = radius
+        Command.__init__(self, canvas)
+
+    def __call__(self, canvas):
+        return oil_paint(canvas.current_image, radius=self.radius)
+
 class Despeckle(Command):
 
     TEXT = _('De-speckle image')
 
     def __call__(self, canvas):
-        img = canvas.current_image
-        i = qimage_to_magick(img)
-        i.despeckle()
-        return magick_to_qimage(i)
+        return despeckle(canvas.current_image)
+
+class Normalize(Command):
+
+    TEXT = _('Normalize image')
+
+    def __call__(self, canvas):
+        return normalize(canvas.current_image)
 
 class Replace(Command):
 
@@ -313,7 +285,7 @@ class Canvas(QWidget):
     def load_image(self, data):
         self.is_valid = False
         try:
-            fmt = identify_data(data)[-1].encode('ascii')
+            fmt = identify(data)[0].encode('ascii')
         except Exception:
             fmt = b''
         self.original_image_format = fmt.decode('ascii').lower()
@@ -336,7 +308,18 @@ class Canvas(QWidget):
     def get_image_data(self, quality=90):
         if not self.is_modified:
             return self.original_image_data
-        return pixmap_to_data(self.current_image, format=self.original_image_format or 'JPEG', quality=90)
+        fmt = self.original_image_format or 'JPEG'
+        if fmt.lower() not in set(map(lambda x:bytes(x).decode('ascii'), QImageWriter.supportedImageFormats())):
+            if fmt.lower() == 'gif':
+                data = image_to_data(self.current_image, fmt='PNG', png_compression_level=0)
+                from PIL import Image
+                i = Image.open(data)
+                buf = BytesIO()
+                i.save(buf, 'gif')
+                return buf.getvalue()
+            else:
+                raise ValueError('Cannot save %s format images' % fmt)
+        return pixmap_to_data(self.current_image, format=fmt, quality=90)
 
     def copy(self):
         if not self.is_valid:
@@ -404,6 +387,16 @@ class Canvas(QWidget):
     @imageop
     def despeckle_image(self):
         self.undo_stack.push(Despeckle(self))
+        return True
+
+    @imageop
+    def normalize_image(self):
+        self.undo_stack.push(Normalize(self))
+        return True
+
+    @imageop
+    def oilify_image(self, radius=4.0):
+        self.undo_stack.push(Oilify(radius, self))
         return True
 
     # The selection rectangle {{{

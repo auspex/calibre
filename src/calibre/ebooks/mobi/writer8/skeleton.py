@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -237,9 +237,12 @@ class Chunker(object):
                 tn = tag.tag
                 if tn is not None:
                     tn = tn.rpartition('}')[-1]
-                elem = nroot.makeelement(tn,
-                        attrib={k.rpartition('}')[-1]:v for k, v in
-                            tag.attrib.iteritems()})
+                attrib = {k.rpartition('}')[-1]:v for k, v in tag.attrib.iteritems()}
+                try:
+                    elem = nroot.makeelement(tn, attrib=attrib)
+                except ValueError:
+                    attrib = {k:v for k, v in attrib.iteritems() if ':' not in k}
+                    elem = nroot.makeelement(tn, attrib=attrib)
                 elem.text = tag.text
             elem.tail = tag.tail
             parent = node_from_path(nroot, path_to_node(tag.getparent()))
@@ -357,7 +360,7 @@ class Chunker(object):
         # an offset from the start of the chunk to the start of the tag pointed
         # to by the link.
         aid_map = {}  # Map of aid to (fid, offset_from_start_of_chunk, offset_from_start_of_text)
-        for match in re.finditer(br'<[^>]+? aid=[\'"]([A-Z0-9]+)[\'"]', rebuilt_text):
+        for match in re.finditer(br'<[^>]+? [ac]id=[\'"]([cA-Z0-9]+)[\'"]', rebuilt_text):
             offset = match.start()
             pos_fid = None
             for chunk in self.chunk_table:

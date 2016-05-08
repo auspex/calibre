@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 
 '''
@@ -28,8 +28,7 @@ class FormatterFunctions(object):
     error_function_body = ('def evaluate(self, formatter, kwargs, mi, locals):\n'
                        '\treturn "' +
                             _('Duplicate user function name {0}. '
-                              'Change the name or ensure that the functions are identical')
-                                       + '"')
+                              'Change the name or ensure that the functions are identical') + '"')
 
     def __init__(self):
         self._builtins = {}
@@ -130,7 +129,7 @@ class FormatterFunction(object):
         if isinstance(ret, (str, unicode)):
             return ret
         if isinstance(ret, list):
-            return ','.join(list)
+            return ','.join(ret)
         if isinstance(ret, (int, float, bool)):
             return unicode(ret)
 
@@ -329,7 +328,7 @@ class BuiltinPrint(BuiltinFormatterFunction):
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         print args
-        return None
+        return ''
 
 class BuiltinField(BuiltinFormatterFunction):
     name = 'field'
@@ -348,7 +347,13 @@ class BuiltinRawField(BuiltinFormatterFunction):
             'without applying any formatting.')
 
     def evaluate(self, formatter, kwargs, mi, locals, name):
-        return unicode(getattr(mi, name, None))
+        res = getattr(mi, name, None)
+        if isinstance(res, list):
+            fm = mi.metadata_for_field(name)
+            if fm is None:
+                return ', '.join(res)
+            return fm['is_multiple']['list_to_ui'].join(res)
+        return unicode(res)
 
 class BuiltinRawList(BuiltinFormatterFunction):
     name = 'raw_list'
@@ -411,7 +416,7 @@ class BuiltinTest(BuiltinFormatterFunction):
     arg_count = 3
     category = 'If-then-else'
     __doc__ = doc = _('test(val, text if not empty, text if empty) -- return `text if not '
-            'empty` if the field is not empty, otherwise return `text if empty`')
+            'empty` if val is not empty, otherwise return `text if empty`')
 
     def evaluate(self, formatter, kwargs, mi, locals, val, value_if_set, value_not_set):
         if val:
@@ -424,7 +429,7 @@ class BuiltinContains(BuiltinFormatterFunction):
     arg_count = 4
     category = 'If-then-else'
     __doc__ = doc = _('contains(val, pattern, text if match, text if not match) -- checks '
-            'if field contains matches for the regular expression `pattern`. '
+            'if val contains matches for the regular expression `pattern`. '
             'Returns `text if match` if matches are found, otherwise it returns '
             '`text if no match`')
 
@@ -440,9 +445,9 @@ class BuiltinSwitch(BuiltinFormatterFunction):
     arg_count = -1
     category = 'Iterating over values'
     __doc__ = doc = _('switch(val, pattern, value, pattern, value, ..., else_value) -- '
-            'for each `pattern, value` pair, checks if the field matches '
+            'for each `pattern, value` pair, checks if `val` matches '
             'the regular expression `pattern` and if so, returns that '
-            '`value`. If no pattern matches, then else_value is returned. '
+            '`value`. If no pattern matches, then `else_value` is returned. '
             'You can have as many `pattern, value` pairs as you want')
 
     def evaluate(self, formatter, kwargs, mi, locals, val, *args):
@@ -559,7 +564,7 @@ class BuiltinRe(BuiltinFormatterFunction):
     name = 're'
     arg_count = 3
     category = 'String manipulation'
-    __doc__ = doc = _('re(val, pattern, replacement) -- return the field after applying '
+    __doc__ = doc = _('re(val, pattern, replacement) -- return val after applying '
             'the regular expression. All instances of `pattern` are replaced '
             'with `replacement`. As in all of calibre, these are '
             'python-compatible regular expressions')
@@ -572,7 +577,7 @@ class BuiltinReGroup(BuiltinFormatterFunction):
     arg_count = -1
     category = 'String manipulation'
     __doc__ = doc = _('re_group(val, pattern, template_for_group_1, for_group_2, ...) -- '
-            'return a string made by applying the reqular expression pattern '
+            'return a string made by applying the regular expression pattern '
             'to the val and replacing each matched instance with the string '
             'computed by replacing each matched group by the value returned '
             'by the corresponding template. The original matched value for the '
@@ -631,8 +636,8 @@ class BuiltinShorten(BuiltinFormatterFunction):
     arg_count = 4
     category = 'String manipulation'
     __doc__ = doc = _('shorten(val, left chars, middle text, right chars) -- Return a '
-            'shortened version of the field, consisting of `left chars` '
-            'characters from the beginning of the field, followed by '
+            'shortened version of val, consisting of `left chars` '
+            'characters from the beginning of val, followed by '
             '`middle text`, followed by `right chars` characters from '
             'the end of the string. `Left chars` and `right chars` must be '
             'integers. For example, assume the title of the book is '
@@ -735,10 +740,10 @@ class BuiltinFormatsModtimes(BuiltinFormatterFunction):
     arg_count = 1
     category = 'Get values from metadata'
     __doc__ = doc = _('formats_modtimes(date_format) -- return a comma-separated '
-                  'list of colon_separated items representing modification times '
+                  'list of colon-separated items representing modification times '
                   'for the formats of a book. The date_format parameter '
                   'specifies how the date is to be formatted. See the '
-                  'date_format function for details. You can use the select '
+                  'format_date function for details. You can use the select '
                   'function to get the mod time for a specific '
                   'format. Note that format names are always uppercase, '
                   'as in EPUB.'
@@ -755,7 +760,7 @@ class BuiltinFormatsSizes(BuiltinFormatterFunction):
     arg_count = 0
     category = 'Get values from metadata'
     __doc__ = doc = _('formats_sizes() -- return a comma-separated list of '
-                      'colon_separated items representing sizes in bytes '
+                      'colon-separated items representing sizes in bytes '
                       'of the formats of a book. You can use the select '
                       'function to get the size for a specific '
                       'format. Note that format names are always uppercase, '
@@ -771,7 +776,7 @@ class BuiltinFormatsPaths(BuiltinFormatterFunction):
     arg_count = 0
     category = 'Get values from metadata'
     __doc__ = doc = _('formats_paths() -- return a comma-separated list of '
-                      'colon_separated items representing full path to '
+                      'colon-separated items representing full path to '
                       'the formats of a book. You can use the select '
                       'function to get the path for a specific '
                       'format. Note that format names are always uppercase, '
@@ -946,7 +951,7 @@ class BuiltinUppercase(BuiltinFormatterFunction):
     name = 'uppercase'
     arg_count = 1
     category = 'String case changes'
-    __doc__ = doc = _('uppercase(val) -- return value of the field in upper case')
+    __doc__ = doc = _('uppercase(val) -- return val in upper case')
 
     def evaluate(self, formatter, kwargs, mi, locals, val):
         return val.upper()
@@ -955,7 +960,7 @@ class BuiltinLowercase(BuiltinFormatterFunction):
     name = 'lowercase'
     arg_count = 1
     category = 'String case changes'
-    __doc__ = doc = _('lowercase(val) -- return value of the field in lower case')
+    __doc__ = doc = _('lowercase(val) -- return val in lower case')
 
     def evaluate(self, formatter, kwargs, mi, locals, val):
         return val.lower()
@@ -964,7 +969,7 @@ class BuiltinTitlecase(BuiltinFormatterFunction):
     name = 'titlecase'
     arg_count = 1
     category = 'String case changes'
-    __doc__ = doc = _('titlecase(val) -- return value of the field in title case')
+    __doc__ = doc = _('titlecase(val) -- return val in title case')
 
     def evaluate(self, formatter, kwargs, mi, locals, val):
         return titlecase(val)
@@ -973,7 +978,7 @@ class BuiltinCapitalize(BuiltinFormatterFunction):
     name = 'capitalize'
     arg_count = 1
     category = 'String case changes'
-    __doc__ = doc = _('capitalize(val) -- return value of the field capitalized')
+    __doc__ = doc = _('capitalize(val) -- return val capitalized')
 
     def evaluate(self, formatter, kwargs, mi, locals, val):
         return capitalize(val)
@@ -1066,7 +1071,7 @@ class BuiltinAnd(BuiltinFormatterFunction):
     __doc__ = doc = _('and(value, value, ...) -- '
             'returns the string "1" if all values are not empty, otherwise '
             'returns the empty string. This function works well with test or '
-            'first_non_empty. You can have as many values as you want.')
+            'first_non_empty. You can have as many values as you want. ')
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         i = 0
@@ -1100,7 +1105,7 @@ class BuiltinNot(BuiltinFormatterFunction):
     __doc__ = doc = _('not(value) -- '
             'returns the string "1" if the value is empty, otherwise '
             'returns the empty string. This function works well with test or '
-            'first_non_empty. You can have as many values as you want.')
+            'first_non_empty.')
 
     def evaluate(self, formatter, kwargs, mi, locals, val):
         return '' if val else '1'
@@ -1111,7 +1116,7 @@ class BuiltinListUnion(BuiltinFormatterFunction):
     category = 'List manipulation'
     __doc__ = doc = _('list_union(list1, list2, separator) -- '
             'return a list made by merging the items in list1 and list2, '
-            'removing duplicate items using a case-insensitive compare. If '
+            'removing duplicate items using a case-insensitive comparison. If '
             'items differ in case, the one in list1 is used. '
             'The items in list1 and list2 are separated by separator, as are '
             'the items in the returned list.')
@@ -1135,7 +1140,7 @@ class BuiltinListDifference(BuiltinFormatterFunction):
     category = 'List manipulation'
     __doc__ = doc = _('list_difference(list1, list2, separator) -- '
             'return a list made by removing from list1 any item found in list2, '
-            'using a case-insensitive compare. The items in list1 and list2 '
+            'using a case-insensitive comparison. The items in list1 and list2 '
             'are separated by separator, as are the items in the returned list.')
 
     def evaluate(self, formatter, kwargs, mi, locals, list1, list2, separator):
@@ -1156,7 +1161,7 @@ class BuiltinListIntersection(BuiltinFormatterFunction):
     category = 'List manipulation'
     __doc__ = doc = _('list_intersection(list1, list2, separator) -- '
             'return a list made by removing from list1 any item not found in list2, '
-            'using a case-insensitive compare. The items in list1 and list2 '
+            'using a case-insensitive comparison. The items in list1 and list2 '
             'are separated by separator, as are the items in the returned list.')
 
     def evaluate(self, formatter, kwargs, mi, locals, list1, list2, separator):
@@ -1195,7 +1200,7 @@ class BuiltinListEquals(BuiltinFormatterFunction):
             'otherwise return no_val. The items are determined by splitting '
             'each list using the appropriate separator character (sep1 or '
             'sep2). The order of items in the lists is not relevant. '
-            'The compare is case insensitive.')
+            'The comparison is case insensitive.')
 
     def evaluate(self, formatter, kwargs, mi, locals, list1, sep1, list2, sep2, yes_val, no_val):
         s1 = set([icu_lower(l.strip()) for l in list1.split(sep1) if l.strip()])
@@ -1397,6 +1402,25 @@ class BuiltinVirtualLibraries(BuiltinFormatterFunction):
             return mi._proxy_metadata.virtual_libraries
         return _('This function can be used only in the GUI')
 
+class BuiltinUserCategories(BuiltinFormatterFunction):
+    name = 'user_categories'
+    arg_count = 0
+    category = 'Get values from metadata'
+    __doc__ = doc = _('user_categories() -- return a comma-separated list of '
+                      'the user categories that contain this book. This function '
+                      'works only in the GUI. If you want to use these values '
+                      'in save-to-disk or send-to-device templates then you '
+                      'must make a custom "Column built from other columns", use '
+                      'the function in that column\'s template, and use that '
+                      'column\'s value in your save/send templates')
+
+    def evaluate(self, formatter, kwargs, mi, locals_):
+        if hasattr(mi, '_proxy_metadata'):
+            cats = set(k for k, v in mi._proxy_metadata.user_categories.iteritems() if v)
+            cats = sorted(cats, key=sort_key)
+            return ', '.join(cats)
+        return _('This function can be used only in the GUI')
+
 class BuiltinTransliterate(BuiltinFormatterFunction):
     name = 'transliterate'
     arg_count = 1
@@ -1480,7 +1504,7 @@ _formatter_builtins = [
     BuiltinSublist(),BuiltinSubstr(), BuiltinSubtract(), BuiltinSwapAroundComma(),
     BuiltinSwitch(), BuiltinTemplate(), BuiltinTest(), BuiltinTitlecase(),
     BuiltinToday(), BuiltinTransliterate(), BuiltinUppercase(),
-    BuiltinVirtualLibraries()
+    BuiltinUserCategories(), BuiltinVirtualLibraries()
 ]
 
 class FormatterUserFunction(FormatterFunction):

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -6,27 +6,29 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import os, textwrap
+import os, textwrap, unicodedata
 from itertools import izip
 from collections import OrderedDict
 
 from PyQt5.Qt import (
-    QDialog, QDialogButtonBox, QGridLayout, QLabel, QLineEdit, QVBoxLayout,
-    QFormLayout, QHBoxLayout, QToolButton, QIcon, QApplication, Qt, QWidget,
-    QPoint, QSizePolicy, QPainter, QStaticText, pyqtSignal, QTextOption,
-    QAbstractListModel, QModelIndex, QStyledItemDelegate, QStyle, QCheckBox,
-    QListView, QTextDocument, QSize, QComboBox, QFrame, QCursor, QGroupBox,
-    QSplitter, QPixmap, QRect)
+    QGridLayout, QLabel, QLineEdit, QVBoxLayout, QFormLayout, QHBoxLayout,
+    QToolButton, QIcon, QApplication, Qt, QWidget, QPoint, QSizePolicy,
+    QPainter, QStaticText, pyqtSignal, QTextOption, QAbstractListModel,
+    QModelIndex, QStyledItemDelegate, QStyle, QCheckBox, QListView,
+    QTextDocument, QSize, QComboBox, QFrame, QCursor, QGroupBox, QSplitter,
+    QPixmap, QRect, QPlainTextEdit, pyqtSlot, QMimeData, QKeySequence)
 
 from calibre import prepare_string_for_xml, human_readable
 from calibre.ebooks.oeb.polish.utils import lead_text, guess_type
 from calibre.gui2 import error_dialog, choose_files, choose_save_file, info_dialog, choose_images
 from calibre.gui2.tweak_book import tprefs, current_container
+from calibre.gui2.widgets2 import Dialog as BaseDialog
 from calibre.utils.icu import primary_sort_key, sort_key, primary_contains
 from calibre.utils.matcher import get_char, Matcher
 from calibre.gui2.complete2 import EditWithComplete
 
 ROOT = QModelIndex()
+PARAGRAPH_SEPARATOR = '\u2029'
 
 class BusyCursor(object):
 
@@ -36,41 +38,10 @@ class BusyCursor(object):
     def __exit__(self, *args):
         QApplication.restoreOverrideCursor()
 
-class Dialog(QDialog):
+class Dialog(BaseDialog):
 
     def __init__(self, title, name, parent=None):
-        QDialog.__init__(self, parent)
-        self.setWindowTitle(title)
-        self.name = name
-        self.bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.bb.accepted.connect(self.accept)
-        self.bb.rejected.connect(self.reject)
-
-        self.setup_ui()
-
-        self.resize(self.sizeHint())
-        geom = tprefs.get(name + '-geometry', None)
-        if geom is not None:
-            self.restoreGeometry(geom)
-        if hasattr(self, 'splitter'):
-            state = tprefs.get(name + '-splitter-state', None)
-            if state is not None:
-                self.splitter.restoreState(state)
-
-    def accept(self):
-        tprefs.set(self.name + '-geometry', bytearray(self.saveGeometry()))
-        if hasattr(self, 'splitter'):
-            tprefs.set(self.name + '-splitter-state', bytearray(self.splitter.saveState()))
-        QDialog.accept(self)
-
-    def reject(self):
-        tprefs.set(self.name + '-geometry', bytearray(self.saveGeometry()))
-        if hasattr(self, 'splitter'):
-            tprefs.set(self.name + '-splitter-state', bytearray(self.splitter.saveState()))
-        QDialog.reject(self)
-
-    def setup_ui(self):
-        raise NotImplementedError('You must implement this method in Dialog subclasses')
+        BaseDialog.__init__(self, title, name, parent=parent, prefs=tprefs)
 
 class InsertTag(Dialog):  # {{{
 
@@ -281,13 +252,18 @@ class ImportForeign(Dialog):  # {{{
 # Quick Open {{{
 
 def make_highlighted_text(emph, text, positions):
-    positions = sorted(set(positions) - {-1}, reverse=True)
-    text = prepare_string_for_xml(text)
-    for p in positions:
-        ch = get_char(text, p)
-        text = '%s<span style="%s">%s</span>%s' % (text[:p], emph, ch, text[p+len(ch):])
+    positions = sorted(set(positions) - {-1})
+    if positions:
+        parts = []
+        pos = 0
+        for p in positions:
+            ch = get_char(text, p)
+            parts.append(prepare_string_for_xml(text[pos:p]))
+            parts.append('<span style="%s">%s</span>' % (emph, prepare_string_for_xml(ch)))
+            pos = p + len(ch)
+        parts.append(prepare_string_for_xml(text[pos:]))
+        return ''.join(parts)
     return text
-
 
 class Results(QWidget):
 
@@ -769,7 +745,7 @@ class InsertSemantics(Dialog):
             'foreword': _('Foreword'),
             'loi': _('List of Illustrations'),
             'lot': _('List of Tables'),
-            'notes:': _('Notes'),
+            'notes': _('Notes'),
             'preface': _('Preface'),
             'text': _('Text'),
         }
@@ -947,8 +923,9 @@ class FilterCSS(Dialog):  # {{{
         l.addRow(QLabel(_('Select what style information you want completely removed:')))
         self.h = h = QHBoxLayout()
 
-        for name, text in {
-                'fonts':_('&Fonts'), 'margins':_('&Margins'), 'padding':_('&Padding'), 'floats':_('Flo&ats'), 'colors':_('&Colors')}.iteritems():
+        for name, text in (
+                ('fonts', _('&Fonts')), ('margins', _('&Margins')), ('padding', _('&Padding')), ('floats', _('Flo&ats')), ('colors', _('&Colors')),
+            ):
             c = QCheckBox(text)
             setattr(self, 'opt_' + name, c)
             h.addWidget(c)
@@ -1134,6 +1111,68 @@ class AddCover(Dialog):
         if d.exec_() == d.Accepted:
             pass
 
+# }}}
+
+class PlainTextEdit(QPlainTextEdit):  # {{{
+
+    ''' A class that overrides some methods from QPlainTextEdit to fix handling
+    of the nbsp unicode character. '''
+
+    def __init__(self, parent=None):
+        QPlainTextEdit.__init__(self, parent)
+        self.selectionChanged.connect(self.selection_changed)
+        self.syntax = None
+
+    def toPlainText(self):
+        # QPlainTextEdit's toPlainText implementation replaces nbsp with normal
+        # space, so we re-implement it using QTextCursor, which does not do
+        # that
+        c = self.textCursor()
+        c.clearSelection()
+        c.movePosition(c.Start)
+        c.movePosition(c.End, c.KeepAnchor)
+        ans = c.selectedText().replace(PARAGRAPH_SEPARATOR, '\n')
+        # QTextCursor pads the return value of selectedText with null bytes if
+        # non BMP characters such as 0x1f431 are present.
+        return ans.rstrip('\0')
+
+    @pyqtSlot()
+    def copy(self):
+        # Workaround Qt replacing nbsp with normal spaces on copy
+        c = self.textCursor()
+        if not c.hasSelection():
+            return
+        md = QMimeData()
+        md.setText(self.selected_text)
+        QApplication.clipboard().setMimeData(md)
+
+    @pyqtSlot()
+    def cut(self):
+        # Workaround Qt replacing nbsp with normal spaces on copy
+        self.copy()
+        self.textCursor().removeSelectedText()
+
+    def selected_text_from_cursor(self, cursor):
+        return unicodedata.normalize('NFC', unicode(cursor.selectedText()).replace(PARAGRAPH_SEPARATOR, '\n').rstrip('\0'))
+
+    @property
+    def selected_text(self):
+        return self.selected_text_from_cursor(self.textCursor())
+
+    def selection_changed(self):
+        # Workaround Qt replacing nbsp with normal spaces on copy
+        clipboard = QApplication.clipboard()
+        if clipboard.supportsSelection() and self.textCursor().hasSelection():
+            md = QMimeData()
+            md.setText(self.selected_text)
+            clipboard.setMimeData(md, clipboard.Selection)
+
+    def event(self, ev):
+        if ev.type() == ev.ShortcutOverride and ev in (QKeySequence.Copy, QKeySequence.Cut):
+            ev.accept()
+            (self.copy if ev == QKeySequence.Copy else self.cut)()
+            return True
+        return QPlainTextEdit.event(self, ev)
 # }}}
 
 if __name__ == '__main__':

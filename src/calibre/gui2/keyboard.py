@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -10,6 +10,7 @@ __docformat__ = 'restructuredtext en'
 from collections import OrderedDict
 from functools import partial
 
+import sip
 from PyQt5.Qt import (QObject, QKeySequence, QAbstractItemModel, QModelIndex,
         Qt, QStyledItemDelegate, QTextDocument, QStyle, pyqtSignal, QFrame,
         QApplication, QSize, QRectF, QWidget, QTreeView,
@@ -17,7 +18,7 @@ from PyQt5.Qt import (QObject, QKeySequence, QAbstractItemModel, QModelIndex,
 
 from calibre.utils.config import JSONConfig
 from calibre.constants import DEBUG
-from calibre import prints
+from calibre import prints, prepare_string_for_xml
 from calibre.utils.icu import sort_key, lower
 from calibre.gui2 import error_dialog, info_dialog
 from calibre.utils.search_query_parser import SearchQueryParser, ParseException
@@ -45,7 +46,7 @@ def keysequence_from_event(ev):  # {{{
 
 def finalize(shortcuts, custom_keys_map={}):  # {{{
     '''
-    Resolve conflicts and assign keys to every action in shorcuts, which must
+    Resolve conflicts and assign keys to every action in shortcuts, which must
     be a OrderedDict. User specified mappings of unique names to keys (as a
     list of strings) should be passed in in custom_keys_map. Return a mapping
     of unique names to resolved keys. Also sets the set_to_default member
@@ -76,8 +77,11 @@ def finalize(shortcuts, custom_keys_map={}):  # {{{
 
         keys_map[unique_name] = keys
         ac = shortcut['action']
-        if ac is not None:
-            ac.setShortcuts(list(keys))
+        if ac is None or sip.isdeleted(ac):
+            if ac is not None and DEBUG:
+                prints('Shortcut %r has a deleted action' % unique_name)
+            continue
+        ac.setShortcuts(list(keys))
 
     return keys_map
 
@@ -375,7 +379,7 @@ class Editor(QFrame):  # {{{
         l.addWidget(self.header, 0, 0, 1, 2)
 
         self.use_default = QRadioButton('')
-        self.use_custom = QRadioButton(_('Custom'))
+        self.use_custom = QRadioButton(_('&Custom'))
         l.addWidget(self.use_default, 1, 0, 1, 3)
         l.addWidget(self.use_custom, 2, 0, 1, 3)
         self.use_custom.toggled.connect(self.custom_toggled)
@@ -389,7 +393,7 @@ class Editor(QFrame):  # {{{
             setattr(self, 'label%d'%which, la)
             button = QPushButton(_('None'), self)
             button.clicked.connect(partial(self.capture_clicked, which=which))
-            button.keyPressEvent = partial(self.key_press_event, which=which)
+            button.installEventFilter(self)
             setattr(self, 'button%d'%which, button)
             clear = QToolButton(self)
             clear.setIcon(QIcon(I('clear_left.png')))
@@ -423,7 +427,7 @@ class Editor(QFrame):  # {{{
         if not current:
             current = _('None')
 
-        self.use_default.setText(_('Default: %(deflt)s [Currently not conflicting: %(curr)s]')%
+        self.use_default.setText(_('&Default: %(deflt)s [Currently not conflicting: %(curr)s]')%
                 dict(deflt=default, curr=current))
 
         if shortcut['set_to_default']:
@@ -449,6 +453,17 @@ class Editor(QFrame):  # {{{
     def clear_clicked(self, which=0):
         button = getattr(self, 'button%d'%which)
         button.setText(_('None'))
+
+    def eventFilter(self, obj, event):
+        if self.capture and obj in (self.button1, self.button2):
+            t = event.type()
+            if t == event.ShortcutOverride:
+                event.accept()
+                return True
+            if t == event.KeyPress:
+                self.key_press_event(event, 1 if obj is self.button1 else 2)
+                return True
+        return QFrame.eventFilter(self, obj, event)
 
     def key_press_event(self, ev, which=0):
         if self.capture == 0:
@@ -516,7 +531,8 @@ class Delegate(QStyledItemDelegate):  # {{{
                 keys = _('None')
             else:
                 keys = ', '.join(keys)
-            html = '<b>%s</b><br>%s: %s'%(shortcut['name'], _('Shortcuts'), keys)
+            html = '<b>%s</b><br>%s: %s'%(
+                prepare_string_for_xml(shortcut['name']), _('Shortcuts'), prepare_string_for_xml(keys))
         else:
             # Group
             html = '<h3>%s</h3>'%data.data

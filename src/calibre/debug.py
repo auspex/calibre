@@ -1,4 +1,4 @@
-#!/usr/bin/env  python
+#!/usr/bin/env  python2
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -13,7 +13,7 @@ from calibre import prints
 
 def option_parser():
     parser = OptionParser(usage=_('''\
-%prog [options]
+{0}
 
 Various command line interfaces useful for debugging calibre. With no options,
 this command starts an embedded python interpreter. You can also run the main
@@ -25,13 +25,14 @@ on.
 
 You can also use %prog to run standalone scripts. To do that use it like this:
 
-    %prog myscript.py -- --option1 --option2 file1 file2 ...
+    {1}
 
 Everything after the -- is passed to the script.
-'''))
+''').format(_('%prog [options]'), '%prog myscript.py -- --option1 --option2 file1 file2 ...'))
     parser.add_option('-c', '--command', help=_('Run python code.'))
     parser.add_option('-e', '--exec-file', help=_('Run the python code in file.'))
-    parser.add_option('-f', '--subset-font', help=_('Subset the specified font'))
+    parser.add_option('-f', '--subset-font', action='store_true', default=False,
+                      help=_('Subset the specified font. Use -- after this option to pass option to the font subsetting program.'))
     parser.add_option('-d', '--debug-device-driver', default=False, action='store_true',
                       help=_('Debug device detection'))
     parser.add_option('-g', '--gui',  default=False, action='store_true',
@@ -65,6 +66,10 @@ Everything after the -- is passed to the script.
             'editing tools, and then rebuilds the file from the edited HTML. '
             'Makes no additional changes to the HTML, unlike a full calibre '
             'conversion).'))
+    parser.add_option('--export-all-calibre-data', default=False, action='store_true',
+        help=_('Export all calibre data (books/settings/plugins)'))
+    parser.add_option('--import-calibre-data', default=False, action='store_true',
+        help=_('Import previously exported calibre data'))
     parser.add_option('-s', '--shutdown-running-calibre', default=False,
             action='store_true',
             help=_('Cause a running calibre instance, if any, to be'
@@ -79,6 +84,10 @@ Everything after the -- is passed to the script.
     parser.add_option('--diff', action='store_true', default=False, help=_(
         'Run the calibre diff tool. For example:\n'
         'calibre-debug --diff file1 file2'))
+    parser.add_option('--default-programs', default=None, choices=['register', 'unregister'],
+                          help=_('(Un)register calibre from Windows Default Programs.') + ' --default-programs=(register|unregister)')
+    parser.add_option('--new-server', action='store_true',
+        help='Run the new calibre content server. Any options specified after a -- will be passed to the server.')
 
     return parser
 
@@ -150,7 +159,7 @@ def print_basic_debug_info(out=None):
     from calibre.constants import (__appname__, get_version, isportable, isosx,
                                    isfrozen, is64bit)
     out(__appname__, get_version(), 'Portable' if isportable else '',
-        'isfrozen:', isfrozen, 'is64bit:', is64bit)
+        'embedded-python:', isfrozen, 'is64bit:', is64bit)
     out(platform.platform(), platform.system(), platform.architecture())
     if iswindows and not is64bit:
         try:
@@ -182,8 +191,8 @@ def run_debug_gui(logpath):
     from calibre.constants import __appname__
     prints(__appname__, _('Debug log'))
     print_basic_debug_info()
-    from calibre.gui2.main import main
-    main(['__CALIBRE_GUI_DEBUG__', logpath])
+    from calibre.gui_launch import calibre
+    calibre(['__CALIBRE_GUI_DEBUG__', logpath])
 
 def run_script(path, args):
     # Load all user defined plugins so the script can import from the
@@ -193,8 +202,9 @@ def run_script(path, args):
 
     sys.argv = [path] + args
     ef = os.path.abspath(path)
-    base = os.path.dirname(ef)
-    sys.path.insert(0, base)
+    if '/src/calibre/' not in ef.replace(os.pathsep, '/'):
+        base = os.path.dirname(ef)
+        sys.path.insert(0, base)
     g = globals()
     g['__name__'] = '__main__'
     g['__file__'] = ef
@@ -212,14 +222,14 @@ def main(args=sys.argv):
 
     opts, args = option_parser().parse_args(args)
     if opts.gui:
-        from calibre.gui2.main import main
+        from calibre.gui_launch import calibre
         print_basic_debug_info()
-        main(['calibre'])
+        calibre(['calibre'])
     elif opts.gui_debug is not None:
         run_debug_gui(opts.gui_debug)
     elif opts.viewer:
-        from calibre.gui2.viewer.main import main
-        main(['ebook-viewer', '--debug-javascript'] + args[1:])
+        from calibre.gui_launch import ebook_viewer
+        ebook_viewer(['ebook-viewer', '--debug-javascript'] + args[1:])
     elif opts.py_console:
         from calibre.utils.pyconsole.main import main
         main()
@@ -240,8 +250,8 @@ def main(args=sys.argv):
         for path in args[1:]:
             inspect_mobi(path)
     elif opts.edit_book:
-        from calibre.gui2.tweak_book.main import main
-        main(['ebook-edit'] + args[1:])
+        from calibre.gui_launch import ebook_edit
+        ebook_edit(['ebook-edit'] + args[1:])
     elif opts.explode_book:
         from calibre.ebooks.tweak import tweak
         tweak(opts.explode_book)
@@ -253,7 +263,7 @@ def main(args=sys.argv):
         shutdown_other()
     elif opts.subset_font:
         from calibre.utils.fonts.sfnt.subset import main
-        main(['subset-font']+[opts.subset_font]+args[1:])
+        main(['subset-font'] + args[1:])
     elif opts.exec_file:
         run_script(opts.exec_file, args[1:])
     elif opts.run_plugin:
@@ -266,6 +276,24 @@ def main(args=sys.argv):
     elif opts.diff:
         from calibre.gui2.tweak_book.diff.main import main
         main(['calibre-diff'] + args[1:])
+    elif opts.default_programs:
+        if not iswindows:
+            raise SystemExit('Can only be run on Microsoft Windows')
+        if opts.default_programs == 'register':
+            from calibre.utils.winreg.default_programs import register as func
+        else:
+            from calibre.utils.winreg.default_programs import unregister as func
+        print 'Running', func.__name__, '...'
+        func()
+    elif opts.new_server:
+        from calibre.srv.standalone import main
+        main(args)
+    elif opts.export_all_calibre_data:
+        from calibre.utils.exim import run_exporter
+        run_exporter()
+    elif opts.import_calibre_data:
+        from calibre.utils.exim import run_importer
+        run_importer()
     elif len(args) >= 2 and args[1].rpartition('.')[-1] in {'py', 'recipe'}:
         run_script(args[1], args[2:])
     elif len(args) >= 2 and args[1].rpartition('.')[-1] in {'mobi', 'azw', 'azw3', 'docx', 'odt'}:
@@ -278,6 +306,9 @@ def main(args=sys.argv):
                 inspect_mobi(path)
             else:
                 print ('Cannot dump unknown filetype: %s' % path)
+    elif len(args) >= 2 and os.path.exists(os.path.join(args[1], '__main__.py')):
+        sys.path.insert(0, args[1])
+        run_script(os.path.join(args[1], '__main__.py'), args[2:])
     else:
         from calibre import ipython
         ipython()
@@ -286,4 +317,3 @@ def main(args=sys.argv):
 
 if __name__ == '__main__':
     sys.exit(main())
-

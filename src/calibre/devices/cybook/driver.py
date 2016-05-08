@@ -50,7 +50,7 @@ class CYBOOK(USBMS):
             coverdata = coverdata[2]
         else:
             coverdata = None
-        with open('%s_6090.t2b' % os.path.join(path, filename), 'wb') as t2bfile:
+        with lopen('%s_6090.t2b' % os.path.join(path, filename), 'wb') as t2bfile:
             t2b.write_t2b(t2bfile, coverdata)
             fsync(t2bfile)
 
@@ -78,8 +78,8 @@ class ORIZON(CYBOOK):
 
     EXTRA_CUSTOMIZATION_MESSAGE = [
         _('Card A folder') + ':::<p>' +
-            _('Enter the folder where the books are to be stored when sent to the '
-              'memory card. This folder is prepended to any send to device template') + '</p>',
+        _('Enter the folder where the books are to be stored when sent to the '
+          'memory card. This folder is prepended to any send to device template') + '</p>',
     ]
     EXTRA_CUSTOMIZATION_DEFAULT = [EBOOK_DIR_CARD_A]
 
@@ -89,7 +89,7 @@ class ORIZON(CYBOOK):
             coverdata = coverdata[2]
         else:
             coverdata = None
-        with open('%s.thn' % filepath, 'wb') as thnfile:
+        with lopen('%s.thn' % filepath, 'wb') as thnfile:
             t4b.write_t4b(thnfile, coverdata)
             fsync(thnfile)
 
@@ -111,3 +111,27 @@ class ORIZON(CYBOOK):
             return ''
         return self.EBOOK_DIR_CARD_A
 
+class MUSE(CYBOOK):
+
+    name           = 'Cybook Muse Device Interface'
+    gui_name       = 'Muse'
+    description    = _('Communicate with the Cybook Muse eBook reader.')
+    author         = 'Kovid Goyal'
+
+    FORMATS     = ['epub', 'html', 'fb2', 'txt', 'pdf', 'djvu']
+
+    VENDOR_ID   = [0x0525]
+    PRODUCT_ID  = [0xa4a5]
+    BCD         = [0x0230]
+
+    VENDOR_NAME = 'USB_2.0'
+    WINDOWS_MAIN_MEM = WINDOWS_CARD_A_MEM = 'USB_FLASH_DRIVER'
+
+    EBOOK_DIR_MAIN = 'Books'
+    SCAN_FROM_ROOT = True
+
+    @classmethod
+    def can_handle(cls, device_info, debug=False):
+        if isunix:
+            return device_info[3] == 'Bookeen' and device_info[4] in ('Cybook', 'Lev', 'Nolimbook', 'Letto')
+        return True

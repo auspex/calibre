@@ -1,4 +1,4 @@
-#!/usr/bin/env  python
+#!/usr/bin/env  python2
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -89,7 +89,7 @@ Date        : %s
 TOC thumb   : %s
 Has content : %s
 '''%(self.title, self.url, self.author, self.summary[:20]+'...',
-    self.toc_thumbnail, self.localtime.strftime('%a, %d %b, %Y %H:%M'),
+     self.localtime.strftime('%a, %d %b, %Y %H:%M'), self.toc_thumbnail,
      bool(self.content))).encode('utf-8')
 
     def __str__(self):

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import with_statement
 
@@ -10,14 +10,22 @@ import re, time
 from functools import partial
 
 
-from PyQt5.Qt import QComboBox, Qt, QLineEdit, pyqtSlot, QDialog, \
-                     pyqtSignal, QCompleter, QAction, QKeySequence, QTimer, \
-                     QIcon, QMenu
+from PyQt5.Qt import (
+    QComboBox, Qt, QLineEdit, pyqtSlot, QDialog,
+    pyqtSignal, QCompleter, QAction, QKeySequence, QTimer,
+    QIcon, QMenu, QApplication, QKeyEvent)
 
 from calibre.gui2 import config, error_dialog, question_dialog, gprefs
 from calibre.gui2.dialogs.confirm_delete import confirm
 from calibre.gui2.dialogs.saved_search_editor import SavedSearchEditor
 from calibre.gui2.dialogs.search import SearchDialog
+
+class AsYouType(unicode):
+
+    def __new__(cls, text):
+        self = unicode.__new__(cls, text)
+        self.as_you_type = True
+        return self
 
 class SearchLineEdit(QLineEdit):  # {{{
     key_pressed = pyqtSignal(object)
@@ -33,7 +41,22 @@ class SearchLineEdit(QLineEdit):  # {{{
 
     def contextMenuEvent(self, ev):
         self.parent().normalize_state()
-        return QLineEdit.contextMenuEvent(self, ev)
+        menu = self.createStandardContextMenu()
+        menu.setAttribute(Qt.WA_DeleteOnClose)
+        for action in menu.actions():
+            if action.text().startswith(_('&Paste') + '\t'):
+                break
+        ac = menu.addAction(_('Paste and &search'))
+        ac.setEnabled(bool(QApplication.clipboard().text()))
+        ac.setIcon(QIcon(I('search.png')))
+        ac.triggered.connect(self.paste_and_search)
+        menu.insertAction(action, ac)
+        menu.exec_(ev.globalPos())
+
+    def paste_and_search(self):
+        self.paste()
+        ev = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Enter, Qt.NoModifier)
+        self.keyPressEvent(ev)
 
     @pyqtSlot()
     def paste(self, *args):
@@ -189,17 +212,19 @@ class SearchBox2(QComboBox):  # {{{
         self.normalize_state()
 
     def timer_event(self):
-        self.do_search()
+        self._do_search(as_you_type=True)
 
     def history_selected(self, text):
         self.changed.emit()
         self.do_search()
 
-    def _do_search(self, store_in_history=True):
+    def _do_search(self, store_in_history=True, as_you_type=False):
         self.hide_completer_popup()
         text = unicode(self.currentText()).strip()
         if not text:
             return self.clear()
+        if as_you_type:
+            text = AsYouType(text)
         self.search.emit(text)
 
         if store_in_history:
@@ -348,7 +373,13 @@ class SavedSearchBox(QComboBox):  # {{{
         name = unicode(self.currentText())
         if not name.strip():
             name = unicode(self.search_box.text()).replace('"', '')
-        if not (name and self.search_box.text()):
+        name = name.replace('\\', '')
+        if not name:
+            error_dialog(self, _('Create saved search'),
+                         _('Invalid saved search name. '
+                           'It must contain at least one letter or number'), show=True)
+            return
+        if not self.search_box.text():
             error_dialog(self, _('Create saved search'),
                          _('There is no search to save'), show=True)
             return
@@ -371,8 +402,8 @@ class SavedSearchBox(QComboBox):  # {{{
                          _('No search is selected'), show=True)
             return
         if not confirm('<p>'+_('The selected search will be '
-                       '<b>permanently deleted</b>. Are you sure?')
-                    +'</p>', 'saved_search_delete', self):
+                       '<b>permanently deleted</b>. Are you sure?') +
+                       '</p>', 'saved_search_delete', self):
             return
         ss = db.saved_search_lookup(unicode(self.currentText()))
         if ss is None:
@@ -429,6 +460,9 @@ class SearchBoxMixin(object):  # {{{
         tt = _('Enable or disable search highlighting.') + '<br><br>'
         tt += config.help('highlight_search_matches')
         self.highlight_only_button.setToolTip(tt)
+        self.highlight_only_action = ac = QAction(self)
+        self.addAction(ac), ac.triggered.connect(self.highlight_only_clicked)
+        self.keyboard.register_shortcut('highlight search results', _('Highlight search results'), action=self.highlight_only_action)
 
     def highlight_only_clicked(self, state):
         if not config['highlight_search_matches'] and not question_dialog(self, _('Are you sure?'),

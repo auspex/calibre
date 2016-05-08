@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import with_statement
 
@@ -28,26 +28,23 @@ class SafeLocalTimeZone(tzlocal):
         #
         # The code above yields the following result:
         #
-        #>>> import tz, datetime
-        #>>> t = tz.tzlocal()
-        #>>> datetime.datetime(2003,2,15,23,tzinfo=t).tzname()
-        #'BRDT'
-        #>>> datetime.datetime(2003,2,16,0,tzinfo=t).tzname()
-        #'BRST'
-        #>>> datetime.datetime(2003,2,15,23,tzinfo=t).tzname()
-        #'BRST'
-        #>>> datetime.datetime(2003,2,15,22,tzinfo=t).tzname()
-        #'BRDT'
-        #>>> datetime.datetime(2003,2,15,23,tzinfo=t).tzname()
-        #'BRDT'
+        # >>> import tz, datetime
+        # >>> t = tz.tzlocal()
+        # >>> datetime.datetime(2003,2,15,23,tzinfo=t).tzname()
+        # 'BRDT'
+        # >>> datetime.datetime(2003,2,16,0,tzinfo=t).tzname()
+        # 'BRST'
+        # >>> datetime.datetime(2003,2,15,23,tzinfo=t).tzname()
+        # 'BRST'
+        # >>> datetime.datetime(2003,2,15,22,tzinfo=t).tzname()
+        # 'BRDT'
+        # >>> datetime.datetime(2003,2,15,23,tzinfo=t).tzname()
+        # 'BRDT'
         #
         # Here is a more stable implementation:
         #
         try:
-            timestamp = ((dt.toordinal() - EPOCHORDINAL) * 86400
-                        + dt.hour * 3600
-                        + dt.minute * 60
-                        + dt.second)
+            timestamp = ((dt.toordinal() - EPOCHORDINAL) * 86400 + dt.hour * 3600 + dt.minute * 60 + dt.second)
             return time.localtime(timestamp+time.timezone).tm_isdst
         except ValueError:
             pass
@@ -122,21 +119,21 @@ def parse_date(date_string, assume_utc=False, as_utc=True, default=None):
     :param as_utc: If True, return a UTC datetime
 
     :param default: Missing fields are filled in from default. If None, the
-    current date is used.
+    current month and year are used.
     '''
     from dateutil.parser import parse
     if not date_string:
         return UNDEFINED_DATE
     if default is None:
         func = datetime.utcnow if assume_utc else datetime.now
-        default = func().replace(hour=0, minute=0, second=0, microsecond=0,
+        default = func().replace(day=15, hour=0, minute=0, second=0, microsecond=0,
                 tzinfo=_utc_tz if assume_utc else _local_tz)
     dt = parse(date_string, default=default, dayfirst=parse_date_day_first)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=_utc_tz if assume_utc else _local_tz)
     return dt.astimezone(_utc_tz if as_utc else _local_tz)
 
-def parse_only_date(raw, assume_utc=True):
+def parse_only_date(raw, assume_utc=True, as_utc=True):
     '''
     Parse a date string that contains no time information in a manner that
     guarantees that the month and year are always correct in all timezones, and
@@ -145,7 +142,7 @@ def parse_only_date(raw, assume_utc=True):
     f = utcnow if assume_utc else now
     default = f().replace(hour=0, minute=0, second=0, microsecond=0,
             day=15)
-    ans = parse_date(raw, default=default, assume_utc=assume_utc)
+    ans = parse_date(raw, default=default, assume_utc=assume_utc, as_utc=as_utc)
     n = ans + timedelta(days=1)
     if n.month > ans.month:
         ans = ans.replace(day=ans.day-1)
@@ -253,7 +250,7 @@ def utcfromtimestamp(stamp):
 def timestampfromdt(dt, assume_utc=True):
     return (as_utc(dt, assume_utc=assume_utc) - EPOCH).total_seconds()
 
-# Format date functions
+# Format date functions {{{
 
 def fd_format_hour(dt, ampm, hr):
     l = len(hr)
@@ -344,7 +341,9 @@ def format_date(dt, format, assume_utc=False, as_utc=False):
         '(s{1,2})|(m{1,2})|(h{1,2})|(ap)|(AP)|(d{1,4}|M{1,4}|(?:yyyy|yy))',
         repl_func, format)
 
-# Clean date functions
+# }}}
+
+# Clean date functions {{{
 
 def cd_has_hour(tt, dt):
     tt['hour'] = dt.hour
@@ -409,6 +408,7 @@ def clean_date_for_sort(dt, fmt=None):
     re.sub('(s{1,2})|(m{1,2})|(h{1,2})|(d{1,4}|M{1,4}|(?:yyyy|yy))', repl_func, fmt)
     return dt.replace(year=tt['year'], month=tt['mon'], day=tt['day'], hour=tt['hour'],
                       minute=tt['min'], second=tt['sec'], microsecond=0)
+# }}}
 
 def replace_months(datestr, clang):
     # Replace months by english equivalent for parse_date
@@ -451,5 +451,3 @@ def replace_months(datestr, clang):
         if tmp != datestr:
             break
     return tmp
-
-

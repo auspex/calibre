@@ -1,9 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 import sys, os, re, textwrap
+from functools import partial
 import init_calibre
 del init_calibre
 
@@ -17,19 +18,25 @@ from latex import LaTeXHelpBuilder
 def substitute(app, doctree):
     pass
 
+include_pat = re.compile(r'^.. include:: (\S+.rst)', re.M)
+
 def source_read_handler(app, docname, source):
-    source[0] = source[0].replace('/|lang|/', '/%s/' % app.config.language)
-    if docname == 'index':
-        # Sphinx does not call source_read_handle for the .. include directive
-        ss = [open('simple_index.rst', 'rb').read().decode('utf-8')]
-        source_read_handler(app, 'simple_index', ss)
-        source[0] = source[0].replace('.. include:: simple_index.rst', ss[0])
+    src = source[0]
+    if app.builder.name != 'gettext' and app.config.language != 'en':
+        src = re.sub(r'(\s+generated/)en/', r'\1' + app.config.language + '/', src)
+    # Sphinx does not call source_read_handle for the .. include directive
+    for m in reversed(tuple(include_pat.finditer(src))):
+        included_doc_name = m.group(1).lstrip('/')
+        ss = [open(included_doc_name).read().decode('utf-8')]
+        source_read_handler(app, included_doc_name.partition('.')[0], ss)
+        src = src[:m.start()] + ss[0] + src[m.end():]
+    source[0] = src
 
 CLI_INDEX='''
 .. _cli:
 
 %s
-==========================
+=========================================================
 
 .. image:: ../../images/cli.png
 
@@ -37,7 +44,7 @@ CLI_INDEX='''
     %s
 
 %s
---------------------
+--------------------------------------
 
 .. toctree::
     :maxdepth: 1
@@ -45,7 +52,7 @@ CLI_INDEX='''
 {documented}
 
 %s
--------------------------
+----------------------------------------
 
 {undocumented}
 
@@ -65,13 +72,19 @@ CLI_PREAMBLE='''\
 {usage}
 '''
 
+def titlecase(app, x):
+    if x and app.config.language == 'en':
+        from calibre.utils.titlecase import titlecase as tc
+        x = tc(x)
+    return x
+
 def generate_calibredb_help(preamble, app):
     from calibre.library.cli import COMMANDS, get_parser
     import calibre.library.cli as cli
     preamble = preamble[:preamble.find('\n\n\n', preamble.find('code-block'))]
     preamble += textwrap.dedent('''
 
-    :command:`calibredb` is the command line interface to the |app| database. It has
+    :command:`calibredb` is the command line interface to the calibre database. It has
     several sub-commands, documented below:
 
     ''')
@@ -79,7 +92,7 @@ def generate_calibredb_help(preamble, app):
     global_parser = get_parser('')
     groups = []
     for grp in global_parser.option_groups:
-        groups.append((grp.title.capitalize(), grp.description, grp.option_list))
+        groups.append((titlecase(app, grp.title), grp.description, grp.option_list))
 
     global_options = '\n'.join(render_options('calibredb', groups, False, False))
 
@@ -91,7 +104,7 @@ def generate_calibredb_help(preamble, app):
         parser = getattr(cli, cmd+'_option_parser')(*args)
         if cmd == 'catalog':
             parser = parser[0]
-        lines += ['.. _calibredb-'+cmd+':', '']
+        lines += ['.. _calibredb-%s-%s:' % (app.config.language, cmd), '']
         lines += [cmd, '~'*20, '']
         usage = parser.usage.strip()
         usage = [i for i in usage.replace('%prog', 'calibredb').splitlines()]
@@ -103,6 +116,11 @@ def generate_calibredb_help(preamble, app):
         groups = [(None, None, parser.option_list)]
         lines += ['']
         lines += render_options('calibredb '+cmd, groups, False)
+        lines += ['']
+        for group in parser.option_groups:
+            if not getattr(group, 'is_global_options', False):
+                lines.extend(render_options(
+                    'calibredb_' + cmd, [[titlecase(app, group.title), group.description, group.option_list]], False, False, header_level='^'))
         lines += ['']
 
     raw = preamble + '\n\n'+'.. contents::\n  :local:'+ '\n\n' + global_options+'\n\n'+'\n'.join(lines)
@@ -120,7 +138,7 @@ def generate_ebook_convert_help(preamble, app):
     groups = [(None, None, parser.option_list)]
     for grp in parser.option_groups:
         if grp.title not in {'INPUT OPTIONS', 'OUTPUT OPTIONS'}:
-            groups.append((grp.title.title(), grp.description, grp.option_list))
+            groups.append((titlecase(app, grp.title), grp.description, grp.option_list))
     options = '\n'.join(render_options('ebook-convert', groups, False))
 
     raw += '\n\n.. contents::\n  :local:'
@@ -162,15 +180,15 @@ def update_cli_doc(name, raw, app):
             os.makedirs(p)
         open(path, 'wb').write(raw)
 
-def render_options(cmd, groups, options_header=True, add_program=True):
+def render_options(cmd, groups, options_header=True, add_program=True, header_level='~'):
     lines = ['']
     if options_header:
-        lines = ['[options]', '-'*15, '']
+        lines = [_('[options]'), '-'*40, '']
     if add_program:
         lines += ['.. program:: '+cmd, '']
     for title, desc, options in groups:
         if title:
-            lines.extend([title, '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'])
+            lines.extend([title, header_level * (len(title) + 4)])
             lines.append('')
         if desc:
             lines.extend([desc, ''])
@@ -178,15 +196,25 @@ def render_options(cmd, groups, options_header=True, add_program=True):
                 y.get_opt_string())):
             help = opt.help if opt.help else ''
             help = help.replace('\n', ' ').replace('*', '\\*').replace('%default', str(opt.default))
+            help = help.replace('"', r'\ ``"``\ ')
+            help = help.replace("'", r"\ ``'``\ ")
             help = mark_options(help)
             opt = opt.get_opt_string() + ((', '+', '.join(opt._short_opts)) if opt._short_opts else '')
-            opt = '.. cmdoption:: '+opt
+            opt = '.. option:: '+opt
             lines.extend([opt, '', '    '+help, ''])
     return lines
 
 def mark_options(raw):
     raw = re.sub(r'(\s+)--(\s+)', r'\1``--``\2', raw)
-    raw = re.sub(r'(--[a-zA-Z0-9_=,-]+)', r':option:`\1`', raw)
+    def sub(m):
+        opt = m.group()
+        a, b = opt.partition('=')[::2]
+        if a in ('--option1', '--option2'):
+            return m.group()
+        a = ':option:`' + a + '`'
+        b = (' = ``' + b + '``') if b else ''
+        return a + b
+    raw = re.sub(r'(--[|()a-zA-Z0-9_=,-]+)', sub, raw)
     return raw
 
 def cli_docs(app):
@@ -215,7 +243,7 @@ def cli_docs(app):
     documented = [' '*4 + c[0] for c in documented_cmds]
     undocumented = ['  * ' + c for c in undocumented_cmds]
 
-    raw = (CLI_INDEX % cli_index_strings()).format(documented='\n'.join(documented),
+    raw = (CLI_INDEX % cli_index_strings()[:5]).format(documented='\n'.join(documented),
             undocumented='\n'.join(undocumented))
     if not os.path.exists('cli'):
         os.makedirs('cli')
@@ -250,12 +278,25 @@ def template_docs(app):
     raw = generate_template_language_help(app.config.language)
     update_cli_doc('template_ref', raw, app)
 
+def localized_path(app, langcode, pagename):
+    href = app.builder.get_target_uri(pagename)
+    href = re.sub(r'generated/[a-z]+/', 'generated/%s/' % langcode, href)
+    prefix = '/'
+    if langcode != 'en':
+        prefix += langcode + '/'
+    return prefix + href
+
+def add_html_context(app, pagename, templatename, context, *args):
+    context['localized_path'] = partial(localized_path, app)
+    context['change_language_text'] = cli_index_strings()[5]
+
 def setup(app):
     app.add_builder(EPUBHelpBuilder)
     app.add_builder(LaTeXHelpBuilder)
     app.connect('source-read', source_read_handler)
     app.connect('doctree-read', substitute)
     app.connect('builder-inited', generate_docs)
+    app.connect('html-page-context', add_html_context)
     app.connect('build-finished', finished)
 
 def finished(app, exception):

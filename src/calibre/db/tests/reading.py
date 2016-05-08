@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -265,7 +265,7 @@ class ReadingTest(BaseTest):
         old = LibraryDatabase2(self.library_path)
         oldvals = {query:set(old.search_getting_ids(query, '')) for query in (
             # Date tests
-            'date:9/6/2011', 'date:true', 'date:false', 'pubdate:9/2011',
+            'date:9/6/2011', 'date:true', 'date:false', 'pubdate:1/9/2011',
             '#date:true', 'date:<100daysago', 'date:>9/6/2011',
             '#date:>9/1/2011', '#date:=2011',
 
@@ -290,7 +290,7 @@ class ReadingTest(BaseTest):
             'title:="Title One"', 'title:~title', '#enum:=one', '#enum:tw',
             '#enum:false', '#enum:true', 'series:one', 'tags:one', 'tags:true',
             'tags:false', 'uuid:2', 'one', '20.02', '"publisher one"',
-            '"my comments one"',
+            '"my comments one"', 'series_sort:one',
 
             # User categories
             '@Good Authors:One', '@Good Series.good tags:two',
@@ -305,7 +305,7 @@ class ReadingTest(BaseTest):
         old.conn.close()
         old = None
 
-        cache = self.init_cache(self.library_path)
+        cache = self.init_cache(self.cloned_library)
         for query, ans in oldvals.iteritems():
             nr = cache.search(query, '')
             self.assertEqual(ans, nr,
@@ -315,6 +315,18 @@ class ReadingTest(BaseTest):
         # Test searching by id, which was introduced in the new backend
         self.assertEqual(cache.search('id:1', ''), {1})
         self.assertEqual(cache.search('id:>1', ''), {2, 3})
+
+        # Numeric/rating searches with relops in the old db were incorrect, so
+        # test them specifically here
+        cache.set_field('rating', {1:4, 2:2, 3:5})
+        self.assertEqual(cache.search('rating:>2'), set())
+        self.assertEqual(cache.search('rating:>=2'), {1, 3})
+        self.assertEqual(cache.search('rating:<2'), {2})
+        self.assertEqual(cache.search('rating:<=2'), {1, 2, 3})
+        self.assertEqual(cache.search('rating:<=2'), {1, 2, 3})
+        self.assertEqual(cache.search('rating:=2'), {1, 3})
+        self.assertEqual(cache.search('rating:2'), {1, 3})
+        self.assertEqual(cache.search('rating:!=2'), {2})
 
         # Note that the old db searched uuid for un-prefixed searches, the new
         # db does not, for performance
@@ -336,7 +348,7 @@ class ReadingTest(BaseTest):
             for attr in ('name', 'original_name', 'id', 'count',
                          'is_hierarchical', 'is_editable', 'is_searchable',
                          'id_set', 'avg_rating', 'sort', 'use_sort_as_name',
-                         'tooltip', 'icon', 'category'):
+                         'category'):
                 oval, nval = getattr(old, attr), getattr(new, attr)
                 if (
                     (category in {'rating', '#rating'} and attr in {'id_set', 'sort'}) or
@@ -495,10 +507,11 @@ class ReadingTest(BaseTest):
 
         ae = self.assertEqual
 
-        def test(hit, result, *args):
+        def test(hit, result, *args, **kw):
             c.cc
+            num = kw.get('num', 2)
             ae(cache.search(*args), result)
-            ae(c.counts, (1, 0) if hit else (0, 1))
+            ae(c.counts, (num, 0) if hit else (0, num))
             c.cc
 
         test(False, {3}, 'Unknown')
@@ -512,9 +525,9 @@ class ReadingTest(BaseTest):
         for i in range(6):
             test(False, set(), 'nomatch_%s' % i)
         test(False, {3}, 'Unknown')  # cached search expired
-        test(False, {3}, '', 'unknown')
-        test(True, {3}, '', 'unknown')
-        test(True, {3}, 'Unknown', 'unknown')
+        test(False, {3}, '', 'unknown', num=1)
+        test(True, {3}, '', 'unknown', num=1)
+        test(True, {3}, 'Unknown', 'unknown', num=1)
         cache._search_api.MAX_CACHE_UPDATE = 100
         test(False, {2, 3}, 'title:=xxx or title:"=Title One"')
         cache.set_field('publisher', {3:'ppppp', 2:'other'})
@@ -527,7 +540,7 @@ class ReadingTest(BaseTest):
         from calibre.ebooks.metadata.book.base import STANDARD_METADATA_FIELDS
         cache = self.init_cache()
         for book_id in cache.all_book_ids():
-            mi = cache.get_metadata(book_id, get_user_categories=False)
+            mi = cache.get_metadata(book_id, get_user_categories=True)
             pmi = cache.get_proxy_metadata(book_id)
             self.assertSetEqual(set(mi.custom_field_keys()), set(pmi.custom_field_keys()))
 
@@ -627,3 +640,18 @@ class ReadingTest(BaseTest):
         self.assertEqual('FMT2', cache.field_for('#ccf', 1))
     # }}}
 
+    def test_find_identical_books(self):  # {{{
+        ' Test find_identical_books '
+        from calibre.ebooks.metadata.book.base import Metadata
+        from calibre.db.utils import find_identical_books
+        # 'find_identical_books': [(,), (Metadata('unknown'),), (Metadata('xxxx'),)],
+        cache = self.init_cache(self.library_path)
+        data = cache.data_for_find_identical_books()
+        for mi, books in (
+                (Metadata('title one', ['author one']), {2}),
+                (Metadata(_('Unknown')), {3}),
+                (Metadata('title two', ['author one']), {1}),
+        ):
+            self.assertEqual(books, cache.find_identical_books(mi))
+            self.assertEqual(books, find_identical_books(mi, data))
+    # }}}

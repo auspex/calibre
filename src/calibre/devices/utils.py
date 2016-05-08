@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -100,7 +100,7 @@ def create_upload_path(mdata, fname, template, sanitize,
     id_ = mdata.get('id', fname)
     extra_components = get_components(template, mdata, id_,
             timefmt=opts.send_timefmt, length=maxlen-len(app_id)-1,
-            sanitize_func=sanitize)
+            sanitize_func=sanitize, last_has_extension=False)
     if not extra_components:
         extra_components.append(sanitize(filename_callback(fname,
             mdata)))

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # vim:fileencoding=utf-8
 from __future__ import (unicode_literals, division, absolute_import,
                         print_function)
@@ -57,7 +57,7 @@ class Element(ElementBase):
         prefix = {v:k for k, v in self.nsmap.iteritems()}[ns] or ''
         if prefix:
             prefix += ':'
-        return '<%s%s%s (%s)>' % (prefix, self.name, attrs, hex(id(self)))
+        return '<%s%s%s (%s)>' % (prefix, getattr(self, 'name', self.tag), attrs, hex(id(self)))
     __repr__ = __str__
 
     @property
