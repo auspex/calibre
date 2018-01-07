@@ -32,14 +32,17 @@ from calibre.customize.conversion import OptionRecommendation
 from calibre.utils.config import prefs, tweaks
 from calibre.utils.logging import Log
 
+
 class NoSupportedInputFormats(Exception):
 
     def __init__(self, available_formats):
         Exception.__init__(self)
         self.available_formats = available_formats
 
+
 def sort_formats_by_preference(formats, prefs):
     uprefs = [x.upper() for x in prefs]
+
     def key(x):
         try:
             return uprefs.index(x.upper())
@@ -47,6 +50,7 @@ def sort_formats_by_preference(formats, prefs):
             pass
         return len(prefs)
     return sorted(formats, key=key)
+
 
 def get_output_formats(preferred_output_format):
     all_formats = {x.upper() for x in available_output_formats()}
@@ -61,6 +65,7 @@ def get_output_formats(preferred_output_format):
         fmts = list(sorted(all_formats,
                 key=lambda x:{'EPUB':'!A', 'MOBI':'!B'}.get(x.upper(), x)))
     return fmts
+
 
 class GroupModel(QAbstractListModel):
 
@@ -86,10 +91,12 @@ class GroupModel(QAbstractListModel):
             return (f)
         return None
 
+
 def get_preferred_input_format_for_book(db, book_id):
     recs = load_specifics(db, book_id)
     if recs:
         return recs.get('gui_preferred_input_format', None)
+
 
 def get_available_formats_for_book(db, book_id):
     available_formats = db.formats(book_id, index_is_id=True)
@@ -97,6 +104,7 @@ def get_available_formats_for_book(db, book_id):
         available_formats = ''
     return set([x.lower() for x in
         available_formats.split(',')])
+
 
 def get_supported_input_formats_for_book(db, book_id):
     available_formats = get_available_formats_for_book(db, book_id)
@@ -153,11 +161,12 @@ class Config(QDialog, Ui_Dialog):
 
         self.input_formats.currentIndexChanged[str].connect(self.setup_pipeline)
         self.output_formats.currentIndexChanged[str].connect(self.setup_pipeline)
+        self.groups.setSpacing(5)
         self.groups.activated[(QModelIndex)].connect(self.show_pane)
         self.groups.clicked[(QModelIndex)].connect(self.show_pane)
         self.groups.entered[(QModelIndex)].connect(self.show_group_help)
         rb = self.buttonBox.button(self.buttonBox.RestoreDefaults)
-        rb.setText(_('Restore &Defaults'))
+        rb.setText(_('Restore &defaults'))
         rb.clicked.connect(self.restore_defaults)
         self.groups.setMouseTracking(True)
         geom = gprefs.get('convert_single_dialog_geom', None)
@@ -169,7 +178,7 @@ class Config(QDialog, Ui_Dialog):
     def sizeHint(self):
         desktop = QCoreApplication.instance().desktop()
         geom = desktop.availableGeometry(self)
-        nh, nw = max(300, geom.height()-50), max(400, geom.width()-70)
+        nh, nw = max(300, geom.height()-100), max(400, geom.width()-70)
         return QSize(nw, nh)
 
     def restore_defaults(self):
@@ -312,6 +321,3 @@ class Config(QDialog, Ui_Dialog):
     def show_group_help(self, index):
         widget = self._groups_model.widgets[index.row()]
         self.help.setPlainText(widget.HELP)
-
-
-

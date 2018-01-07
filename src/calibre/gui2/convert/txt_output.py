@@ -8,9 +8,10 @@ __docformat__ = 'restructuredtext en'
 from calibre.gui2.convert.txt_output_ui import Ui_Form
 from calibre.gui2.convert import Widget
 
+
 class PluginWidget(Widget, Ui_Form):
 
-    TITLE = _('TXT Output')
+    TITLE = _('TXT output')
     HELP = _('Options specific to')+' TXT '+_('output')
     COMMIT_NAME = 'txt_output'
     ICON = I('mimetypes/txt.png')

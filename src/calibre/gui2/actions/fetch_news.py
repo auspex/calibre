@@ -14,10 +14,11 @@ from calibre.gui2 import Dispatcher
 from calibre.gui2.tools import fetch_scheduled_recipe
 from calibre.gui2.actions import InterfaceAction
 
+
 class FetchNewsAction(InterfaceAction):
 
     name = 'Fetch News'
-    action_spec = (_('Fetch news'), 'news.png', _('Download news in ebook form from various websites all over the world'), _('F'))
+    action_spec = (_('Fetch news'), 'news.png', _('Download news in e-book form from various websites all over the world'), _('F'))
 
     def location_selected(self, loc):
         enabled = loc == 'library'
@@ -84,5 +85,3 @@ class FetchNewsAction(InterfaceAction):
         self.gui.email_news(id)
         self.gui.sync_news()
         gc.collect()
-
-

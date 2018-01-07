@@ -5,9 +5,8 @@
  * Distributed under terms of the GPL3 license.
  */
 
-#include <stdexcept>
 #include "imageops.h"
-#include <QColor>
+#include <stdexcept>
 #include <QVector>
 #include <cmath>
 
@@ -15,7 +14,6 @@
 #define SQUARE(x) (x)*(x)
 #define MAX(x, y) ((x) > (y)) ? (x) : (y)
 #define MIN(x, y) ((x) < (y)) ? (x) : (y)
-#define DISTANCE(r, g, b) (SQUARE(r - red_average) + SQUARE(g - green_average) + SQUARE(b - blue_average))
 #define M_EPSILON 1.0e-6
 #define M_SQ2PI 2.50662827463100024161235523934010416269302368164062
 #ifndef M_PI
@@ -58,11 +56,12 @@ typedef struct
 // }}}
 
 // Remove borders (auto-trim) {{{
-static unsigned int read_border_row(const QImage &img, const unsigned int width, const unsigned int height, int *reds, const double fuzz, const bool top) {
+static unsigned int read_border_row(const QImage &img, const unsigned int width, const unsigned int height, double *reds, const double fuzz, const bool top) {
 	unsigned int r = 0, c = 0, start = 0, delta = top ? 1 : -1, ans = 0;
 	const QRgb *row = NULL, *pixel = NULL;
-    int *greens = NULL, *blues = NULL;
+    double *greens = NULL, *blues = NULL;
 	double red_average = 0, green_average = 0, blue_average = 0, distance = 0, first_red = 0, first_green = 0, first_blue = 0;
+#define DISTANCE(r, g, b) (SQUARE(r - red_average) + SQUARE(g - green_average) + SQUARE(b - blue_average))
 
     greens = reds + width + 1; blues = greens + width + 1;
 	start = top ? 0 : height - 1;
@@ -71,12 +70,12 @@ static unsigned int read_border_row(const QImage &img, const unsigned int width,
 		row = reinterpret_cast<const QRgb*>(img.constScanLine(r));
         red_average = 0; green_average = 0; blue_average = 0;
 		for (c = 0, pixel = row; c < width; c++, pixel++) {
-            reds[c] = qRed(*pixel); greens[c] = qGreen(*pixel); blues[c] = qBlue(*pixel); 
+            reds[c] = qRed(*pixel) / 255.0; greens[c] = qGreen(*pixel) / 255.0; blues[c] = qBlue(*pixel) / 255.0; 
             red_average += reds[c]; green_average += greens[c]; blue_average += blues[c];
 		}
         red_average /= MAX(1, width); green_average /= MAX(1, width); blue_average /= MAX(1, width);
         distance = 0;
-        for (c = 0; c < width && distance <= fuzz; c++) 
+        for (c = 0; c < width && distance <= fuzz; c++)
             distance = MAX(distance, DISTANCE(reds[c], greens[c], blues[c]));
         if (distance > fuzz) break;  // row is not homogeneous
         if (r == start) { first_red = red_average; first_green = green_average; first_blue = blue_average; }
@@ -88,18 +87,18 @@ static unsigned int read_border_row(const QImage &img, const unsigned int width,
 
 QImage remove_borders(const QImage &image, double fuzz) {
     ScopedGILRelease PyGILRelease;
-	int *buf = NULL;
+	double *buf = NULL;
 	QImage img = image, timg;
 	QTransform transpose;
 	unsigned int width = img.width(), height = img.height();
 	unsigned int top_border = 0, bottom_border = 0, left_border = 0, right_border = 0;
     bool bad_alloc = false;
-    QVector<int> vbuf = QVector<int>();
+    QVector<double> vbuf = QVector<double>();
 
     ENSURE32(img)
     vbuf.resize(3*(MAX(width, height)+1));
 	buf = vbuf.data();
-	fuzz /= 255;
+	fuzz /= 255.0;
 
 	top_border = read_border_row(img, width, height, buf, fuzz, true);
     if (top_border < height - 1) {
@@ -140,7 +139,7 @@ QImage grayscale(const QImage &image) { // {{{
 		row = reinterpret_cast<QRgb*>(img.scanLine(r));
         for (pixel = row; pixel < row + width; pixel++) {
             gray = qGray(*pixel);
-            *pixel = QColor(gray, gray, gray).rgba();
+            *pixel = qRgb(gray, gray, gray);
         }
     }
 	return img;
@@ -583,9 +582,9 @@ QImage despeckle(const QImage &image) {
 
 // overlay() {{{ 
 static inline unsigned int BYTE_MUL(unsigned int x, unsigned int a) {
-    quint64 t = (((quint64(x)) | ((quint64(x)) << 24)) & 0x00ff00ff00ff00ff) * a;
-    t = (t + ((t >> 8) & 0xff00ff00ff00ff) + 0x80008000800080) >> 8;
-    t &= 0x00ff00ff00ff00ff;
+    quint64 t = (((quint64(x)) | ((quint64(x)) << 24)) & 0x00ff00ff00ff00ffULL) * a;
+    t = (t + ((t >> 8) & 0xff00ff00ff00ffULL) + 0x80008000800080ULL) >> 8;
+    t &= 0x00ff00ff00ff00ffULL;
     return ((unsigned int)(t)) | ((unsigned int)(t >> 24));
 }
 
@@ -627,10 +626,10 @@ void overlay(const QImage &image, QImage &canvas, unsigned int left, unsigned in
         }
     } else {
         ENSURE32(img);
-        for (r = 0; r < bottom; r++) {
+        for (r = 0; r < height; r++) {
             src = reinterpret_cast<const QRgb*>(img.constScanLine(r));
             dest = reinterpret_cast<QRgb*>(canvas.scanLine(r + top));
-            memcpy(dest + left, src, (right - left) * sizeof(QRgb));
+            memcpy(dest + left, src, width * sizeof(QRgb));
         }
     }
 
@@ -685,7 +684,7 @@ QImage normalize(const QImage &image) { // {{{
             break;
     }
     memset(&intensity, 0, sizeof(IntegerPixel));
-    for(high.green=high.red; high.green != low.red; --high.green){
+    for(high.green=high.red; high.green > low.red; --high.green){
         intensity.green += histogram[high.green].green;
         if(intensity.green > threshold_intensity)
             break;
@@ -697,7 +696,7 @@ QImage normalize(const QImage &image) { // {{{
             break;
     }
     memset(&intensity, 0, sizeof(IntegerPixel));
-    for(high.blue=high.green; high.blue != low.green; --high.blue){
+    for(high.blue=high.green; high.blue > low.green; --high.blue){
         intensity.blue += histogram[high.blue].blue;
         if(intensity.blue > threshold_intensity)
             break;
@@ -863,4 +862,83 @@ QImage oil_paint(const QImage &image, const float radius, const bool high_qualit
     }
 
     return(buffer);
+} // }}}
+
+bool has_transparent_pixels(const QImage &image) {  // {{{
+    QImage img(image);
+    QImage::Format fmt = img.format();
+    if (!img.hasAlphaChannel()) return false;
+    if (fmt != QImage::Format_ARGB32 && fmt != QImage::Format_ARGB32_Premultiplied) {
+        img = img.convertToFormat(QImage::Format_ARGB32);
+        if (img.isNull()) throw std::bad_alloc();
+    }
+    int w = image.width(), h = image.height();
+    for (int r = 0; r < h; r++) {
+        const QRgb *line = reinterpret_cast<const QRgb*>(img.constScanLine(r));
+        for (int c = 0; c < w; c++) {
+            if (qAlpha(*(line + c)) != 0xff) return true;
+        }
+    }
+    return false;
+} // }}}
+
+QImage set_opacity(const QImage &image, double alpha) {  // {{{
+    QImage img(image);
+    QImage::Format fmt = img.format();
+    if (fmt != QImage::Format_ARGB32) {
+        img = img.convertToFormat(QImage::Format_ARGB32);
+        if (img.isNull()) throw std::bad_alloc();
+    }
+    int w = image.width(), h = image.height();
+    for (int r = 0; r < h; r++) {
+        QRgb *line = reinterpret_cast<QRgb*>(img.scanLine(r));
+        for (int c = 0; c < w; c++) {
+            QRgb pixel = *(line + c);
+            *(line + c) = qRgba(qRed(pixel), qGreen(pixel), qBlue(pixel), qAlpha(pixel) * alpha);
+        }
+    }
+    return img;
+} // }}}
+
+QImage texture_image(const QImage &image, const QImage &texturei) {  // {{{
+    QImage canvas(image);
+    QImage texture(texturei);
+    if (texture.isNull()) throw std::out_of_range("Cannot use null texture image");
+    if (canvas.isNull()) throw std::out_of_range("Cannot use null canvas image");
+
+    ENSURE32(canvas); ENSURE32(texture);
+    int x = 0, y = 0, cw = canvas.width(), ch = canvas.height(), tw = texture.width(), th = texture.height();
+    const bool overwrite = !texturei.hasAlphaChannel();
+
+    if (!overwrite) {
+        if (texture.format() != QImage::Format_ARGB32_Premultiplied) {
+            texture = texture.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            if (texture.isNull()) throw std::bad_alloc();
+        }
+    }
+
+    while (y < ch) {
+        int ylimit = MIN(th, ch - y);
+        x = 0;
+        while (x < cw) {
+            for (int r = 0; r < ylimit; r++) {
+                const QRgb *src = reinterpret_cast<const QRgb*>(texture.constScanLine(r));
+                QRgb *dest = reinterpret_cast<QRgb*>(canvas.scanLine(r + y)) + x;
+                int xlimit = MIN(tw, cw - x);
+                if (overwrite) {
+                    memcpy(dest, src, xlimit * sizeof(QRgb));
+                } else {
+                    for (int c = 0; c < xlimit; c++) {
+                        // See the overlay function() for an explanation of the alpha blending code below
+                        QRgb s = src[c];
+                        if (s >= 0xff000000) dest[c] = s;
+                        else if (s != 0) dest[c] = s + BYTE_MUL(dest[c], qAlpha(~s));
+                    }
+                }
+            }
+            x += tw;
+        }
+        y += th;
+    }
+    return canvas;
 } // }}}

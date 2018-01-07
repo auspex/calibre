@@ -6,7 +6,7 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import os, sys, subprocess, signal, time, errno, socket
+import os, sys, subprocess, signal, time, errno, socket, ssl
 from threading import Thread, Lock
 from Queue import Queue, Empty
 
@@ -21,10 +21,12 @@ from calibre.utils.monotonic import monotonic
 
 MAX_RETRIES = 10
 
+
 class NoAutoReload(EnvironmentError):
     pass
 
 # Filesystem watcher {{{
+
 
 class WatcherBase(object):
 
@@ -55,6 +57,7 @@ class WatcherBase(object):
 
     def file_is_watched(self, fname):
         return fname and fname.rpartition('.')[-1] in self.EXTENSIONS_TO_WATCH
+
 
 if islinux:
     import select
@@ -202,6 +205,7 @@ else:
 
 def find_dirs_to_watch(fpath, dirs, add_default_dirs):
     dirs = {os.path.abspath(x) for x in dirs}
+
     def add(x):
         if os.path.isdir(x):
             dirs.add(x)
@@ -217,12 +221,14 @@ def find_dirs_to_watch(fpath, dirs, add_default_dirs):
     return dirs
 # }}}
 
+
 def join_process(p, timeout=5):
     t = Thread(target=p.wait, name='JoinProcess')
     t.daemon = True
     t.start()
     t.join(timeout)
     return p.poll()
+
 
 class Worker(object):
 
@@ -244,6 +250,7 @@ class Worker(object):
 
         opts = create_option_parser().parse_args(cmd)[0]
         self.port = opts.port
+        self.uses_ssl = bool(opts.ssl_certfile and opts.ssl_keyfile)
         self.connection_timeout = opts.timeout
         self.retry_count = 0
         t = Thread(name='PingThread', target=self.ping_thread)
@@ -306,13 +313,20 @@ class Worker(object):
     def wait_for_listen(self):
         st = monotonic()
         while monotonic() - st < 5:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5)
             try:
-                return socket.create_connection(('localhost', self.port), 5).close()
+                if self.uses_ssl:
+                    s = ssl.wrap_socket(s)
+                s.connect(('localhost', self.port))
+                s.close()
+                return
             except socket.error:
                 time.sleep(0.01)
         self.log.error('Restarted server did not start listening on:', self.port)
 
 # WebSocket reload notifier {{{
+
 
 class ReloadHandler(DummyHandler):
 
@@ -376,6 +390,7 @@ class ReloadServer(Thread):
         self.loop.stop()
         self.join(self.loop.opts.shutdown_timeout)
 # }}}
+
 
 def auto_reload(log, dirs=frozenset(), cmd=None, add_default_dirs=True, listen_on=None):
     if Watcher is None:

@@ -9,9 +9,10 @@ from calibre.gui2.convert import Widget
 
 newline_model = None
 
+
 class PluginWidget(Widget, Ui_Form):
 
-    TITLE = _('SNB Output')
+    TITLE = _('SNB output')
     HELP = _('Options specific to')+' SNB '+_('output')
     COMMIT_NAME = 'snb_output'
     ICON = I('mimetypes/snb.png')
@@ -22,5 +23,3 @@ class PluginWidget(Widget, Ui_Form):
                             'snb_hide_chapter_name','snb_full_screen'])
         self.db, self.book_id = db, book_id
         self.initialize_options(get_option, get_help, db, book_id)
-
-

@@ -8,13 +8,15 @@ __copyright__ = '2012, Kovid Goyal <kovid at kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 import os, shutil
-from urllib import urlretrieve
+from io import BytesIO
 from zipfile import ZipFile, ZIP_STORED, ZipInfo
 from hashlib import sha1
 from tempfile import mkdtemp, SpooledTemporaryFile
+is_ci = os.environ.get('CI', '').lower() == 'true'
 
 
-from setup import Command
+from setup import Command, download_securely
+
 
 class MathJax(Command):
 
@@ -28,8 +30,8 @@ class MathJax(Command):
 
     def download_mathjax_release(self, tdir, url):
         self.info('Downloading MathJax:', url)
-        filename = urlretrieve(url)[0]
-        with ZipFile(filename) as zf:
+        raw = download_securely(url)
+        with ZipFile(BytesIO(raw)) as zf:
             zf.extractall(tdir)
             return os.path.join(tdir, 'MathJax-master')
 
@@ -69,7 +71,7 @@ class MathJax(Command):
                 zf.comment = self.h.hexdigest()
             t.seek(0)
             with open(self.j(self.RESOURCES, 'content-server', 'mathjax.zip.xz'), 'wb') as f:
-                compress(t, f, level=9)
+                compress(t, f, level=1 if is_ci else 9)
             with open(self.j(self.RESOURCES, 'content-server', 'mathjax.version'), 'wb') as f:
                 f.write(zf.comment)
         finally:

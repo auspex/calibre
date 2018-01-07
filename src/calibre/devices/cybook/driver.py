@@ -17,11 +17,12 @@ from calibre.devices.usbms.driver import USBMS
 import calibre.devices.cybook.t2b as t2b
 import calibre.devices.cybook.t4b as t4b
 
+
 class CYBOOK(USBMS):
 
     name           = 'Cybook Gen 3 / Opus Device Interface'
-    gui_name       = 'Cybook Gen 3 / Opus'
-    description    = _('Communicate with the Cybook Gen 3 / Opus eBook reader.')
+    gui_name       = 'Cybook Gen 3/Opus'
+    description    = _('Communicate with the Cybook Gen 3/Opus e-book reader.')
     author         = 'John Schember'
     supported_platforms = ['windows', 'osx', 'linux']
 
@@ -60,11 +61,12 @@ class CYBOOK(USBMS):
             return device_info[3] == 'Bookeen' and (device_info[4] == 'Cybook Gen3' or device_info[4] == 'Cybook Opus')
         return True
 
+
 class ORIZON(CYBOOK):
 
     name           = 'Cybook Orizon Device Interface'
     gui_name       = 'Orizon'
-    description    = _('Communicate with the Cybook Orizon eBook reader.')
+    description    = _('Communicate with the Cybook Orizon e-book reader.')
 
     BCD         = [0x319]
 
@@ -111,11 +113,12 @@ class ORIZON(CYBOOK):
             return ''
         return self.EBOOK_DIR_CARD_A
 
+
 class MUSE(CYBOOK):
 
     name           = 'Cybook Muse Device Interface'
     gui_name       = 'Muse'
-    description    = _('Communicate with the Cybook Muse eBook reader.')
+    description    = _('Communicate with the Cybook Muse e-book reader.')
     author         = 'Kovid Goyal'
 
     FORMATS     = ['epub', 'html', 'fb2', 'txt', 'pdf', 'djvu']
@@ -133,5 +136,5 @@ class MUSE(CYBOOK):
     @classmethod
     def can_handle(cls, device_info, debug=False):
         if isunix:
-            return device_info[3] == 'Bookeen' and device_info[4] in ('Cybook', 'Lev', 'Nolimbook', 'Letto')
+            return device_info[3] == 'Bookeen' and device_info[4] in ('Cybook', 'Lev', 'Nolimbook', 'Letto', 'Nolim')
         return True

@@ -6,7 +6,7 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import os, httplib, hashlib, uuid, struct, repr as reprlib, time
+import os, httplib, hashlib, uuid, struct, repr as reprlib
 from collections import namedtuple
 from io import BytesIO, DEFAULT_BUFFER_SIZE
 from itertools import chain, repeat, izip_longest
@@ -22,7 +22,8 @@ from calibre.srv.http_request import HTTPRequest, read_headers
 from calibre.srv.sendfile import file_metadata, sendfile_to_socket_async, CannotSendfile, SendfileInterrupted
 from calibre.srv.utils import (
     MultiDict, http_date, HTTP1, HTTP11, socket_errors_socket_closed,
-    sort_q_values, get_translator_for_lang, Cookie, ReadOnlyFileBuffer)
+    sort_q_values, get_translator_for_lang, Cookie, fast_now_strftime)
+from calibre.utils.speedups import ReadOnlyFileBuffer
 from calibre.utils.monotonic import monotonic
 
 Range = namedtuple('Range', 'start stop size')
@@ -33,10 +34,12 @@ if zlib2_err:
     raise RuntimeError('Failed to laod the zlib2 module with error: ' + zlib2_err)
 del zlib2_err
 
+
 def header_list_to_file(buf):  # {{{
     buf.append('')
     return ReadOnlyFileBuffer(b''.join((x + '\r\n').encode('ascii') for x in buf))
 # }}}
+
 
 def parse_multipart_byterange(buf, content_type):  # {{{
     sep = (content_type.rsplit('=', 1)[-1]).encode('utf-8')
@@ -74,9 +77,11 @@ def parse_multipart_byterange(buf, content_type):  # {{{
     return ans
 # }}}
 
+
 def parse_if_none_match(val):  # {{{
     return {x.strip() for x in val.split(',')}
 # }}}
+
 
 def acceptable_encoding(val, allowed=frozenset({'gzip'})):  # {{{
     for x in sort_q_values(val):
@@ -84,6 +89,7 @@ def acceptable_encoding(val, allowed=frozenset({'gzip'})):  # {{{
         if x in allowed:
             return x
 # }}}
+
 
 def preferred_lang(val, get_translator_for_lang):  # {{{
     for x in sort_q_values(val):
@@ -93,6 +99,7 @@ def preferred_lang(val, get_translator_for_lang):  # {{{
             return x
     return 'en'
 # }}}
+
 
 def get_ranges(headervalue, content_length):  # {{{
     ''' Return a list of ranges from the Range header. If this function returns
@@ -138,6 +145,8 @@ def get_ranges(headervalue, content_length):  # {{{
 # }}}
 
 # gzip transfer encoding  {{{
+
+
 def gzip_prefix():
     # See http://www.gzip.org/zlib/rfc-gzip.html
     return b''.join((
@@ -149,6 +158,7 @@ def gzip_prefix():
         b'\x02',           # XFL: max compression, slowest algo
         b'\xff',           # OS: unknown
     ))
+
 
 def compress_readable_output(src_file, compress_level=6):
     crc = zlib.crc32(b"")
@@ -168,8 +178,9 @@ def compress_readable_output(src_file, compress_level=6):
             prefix_written = True
             data = gzip_prefix() + data
         yield data
-    yield zobj.flush() + struct.pack(b"<L", crc) + struct.pack(b"<L", size)
+    yield zobj.flush() + struct.pack(b"<L", crc & 0xffffffff) + struct.pack(b"<L", size)
 # }}}
+
 
 def get_range_parts(ranges, content_type, content_length):  # {{{
 
@@ -182,6 +193,7 @@ def get_range_parts(ranges, content_type, content_length):  # {{{
     return list(map(part, ranges)) + [('--%s--' % MULTIPART_SEPARATOR).encode('ascii')]
 # }}}
 
+
 class ETaggedFile(object):  # {{{
 
     def __init__(self, output, etag):
@@ -191,27 +203,28 @@ class ETaggedFile(object):  # {{{
         return self.output.fileno()
 # }}}
 
+
 class RequestData(object):  # {{{
 
     cookies = {}
     username = None
 
     def __init__(self, method, path, query, inheaders, request_body_file, outheaders, response_protocol,
-                 static_cache, opts, remote_addr, remote_port, translator_cache, tdir):
+                 static_cache, opts, remote_addr, remote_port, is_local_connection, translator_cache, tdir, forwarded_for):
 
         (self.method, self.path, self.query, self.inheaders, self.request_body_file, self.outheaders,
          self.response_protocol, self.static_cache, self.translator_cache) = (
             method, path, query, inheaders, request_body_file, outheaders,
             response_protocol, static_cache, translator_cache
         )
-        self.remote_addr, self.remote_port = remote_addr, remote_port
+        self.remote_addr, self.remote_port, self.is_local_connection = remote_addr, remote_port, is_local_connection
+        self.forwarded_for = forwarded_for
         self.opts = opts
         self.status_code = httplib.OK
         self.outcookie = Cookie()
         self.lang_code = self.gettext_func = self.ngettext_func = None
         self.set_translator(self.get_preferred_language())
         self.tdir = tdir
-        self.allowed_book_ids = {}
 
     def generate_static_output(self, name, generator, content_type='text/html; charset=UTF-8'):
         ans = self.static_cache.get(name)
@@ -270,6 +283,7 @@ class RequestData(object):  # {{{
             self.ngettext_func = t.ungettext
 # }}}
 
+
 class ReadableOutput(object):
 
     def __init__(self, output, etag=None, content_length=None):
@@ -284,6 +298,7 @@ class ReadableOutput(object):
         self.use_sendfile = False
         self.src_file.seek(0)
 
+
 def filesystem_file_output(output, outheaders, stat_result):
     etag = getattr(output, 'etag', None)
     if etag is None:
@@ -295,6 +310,7 @@ def filesystem_file_output(output, outheaders, stat_result):
     self.name = output.name
     self.use_sendfile = True
     return self
+
 
 def dynamic_output(output, outheaders, etag=None):
     if isinstance(output, bytes):
@@ -308,6 +324,7 @@ def dynamic_output(output, outheaders, etag=None):
     ans.accept_ranges = False
     return ans
 
+
 class ETaggedDynamicOutput(object):
 
     def __init__(self, func, etag):
@@ -315,6 +332,7 @@ class ETaggedDynamicOutput(object):
 
     def __call__(self):
         return self.func()
+
 
 class GeneratedOutput(object):
 
@@ -324,6 +342,7 @@ class GeneratedOutput(object):
         self.etag = etag
         self.accept_ranges = False
 
+
 class StaticOutput(object):
 
     def __init__(self, data):
@@ -332,6 +351,7 @@ class StaticOutput(object):
         self.data = data
         self.etag = '"%s"' % hashlib.sha1(data).hexdigest()
         self.content_length = len(data)
+
 
 class HTTPConnection(HTTPRequest):
 
@@ -344,7 +364,7 @@ class HTTPConnection(HTTPRequest):
             end = buf.tell()
             buf.seek(pos)
         limit = end - pos
-        if limit == 0:
+        if limit <= 0:
             return True
         if self.use_sendfile and not isinstance(buf, (BytesIO, ReadOnlyFileBuffer)):
             try:
@@ -367,9 +387,10 @@ class HTTPConnection(HTTPRequest):
                 self.use_sendfile = self.ready = False
                 raise IOError('sendfile() failed to write any bytes to the socket')
         else:
-            sent = self.send(buf.read(min(limit, self.send_bufsize)))
+            data = buf.read(min(limit, self.send_bufsize))
+            sent = self.send(data)
         buf.seek(pos + sent)
-        return buf.tell() == end
+        return buf.tell() >= end
 
     def simple_response(self, status_code, msg='', close_after_response=True, extra_headers=None):
         if self.response_protocol is HTTP1:
@@ -411,7 +432,8 @@ class HTTPConnection(HTTPRequest):
         data = RequestData(
             self.method, self.path, self.query, inheaders, request_body_file,
             outheaders, self.response_protocol, self.static_cache, self.opts,
-            self.remote_addr, self.remote_port, self.translator_cache, self.tdir
+            self.remote_addr, self.remote_port, self.is_local_connection,
+            self.translator_cache, self.tdir, self.forwarded_for
         )
         self.queue_job(self.run_request_handler, data)
 
@@ -479,7 +501,7 @@ class HTTPConnection(HTTPRequest):
 
         ct = outheaders.get('Content-Type', '')
         if ct.startswith('text/') and 'charset=' not in ct:
-            outheaders.set('Content-Type', ct + '; charset=UTF-8')
+            outheaders.set('Content-Type', ct + '; charset=UTF-8', replace_all=True)
 
         buf = [HTTP11 + (' %d ' % data.status_code) + httplib.responses[data.status_code]]
         for header, value in sorted(outheaders.iteritems(), key=itemgetter(0)):
@@ -504,9 +526,12 @@ class HTTPConnection(HTTPRequest):
             return
         if not self.opts.log_not_found and status_code == httplib.NOT_FOUND:
             return
-        line = '%s port-%s %s %s "%s" %s %s' % (
-            self.remote_addr, self.remote_port, username or '-',
-            time.strftime('%d/%b/%Y:%H:%M:%S %z'),
+        ff = self.forwarded_for
+        if ff:
+            ff = '[%s] ' % ff
+        line = '%s port-%s %s%s %s "%s" %s %s' % (
+            self.remote_addr, self.remote_port, ff or '', username or '-',
+            fast_now_strftime('%d/%b/%Y:%H:%M:%S %z'),
             force_unicode(self.request_line or '', 'utf-8'),
             status_code, ('-' if response_size is None else response_size))
         self.access_log(line)
@@ -526,7 +551,9 @@ class HTTPConnection(HTTPRequest):
             self.reset_state()
             return
         if isinstance(output, ReadableOutput):
-            self.use_sendfile = output.use_sendfile and self.opts.use_sendfile and sendfile_to_socket_async is not None
+            self.use_sendfile = output.use_sendfile and self.opts.use_sendfile and sendfile_to_socket_async is not None and self.ssl_context is None
+            # sendfile() does not work with SSL sockets since encryption has to
+            # be done in userspace
             if output.ranges is not None:
                 if isinstance(output.ranges, Range):
                     r = output.ranges
@@ -584,9 +611,10 @@ class HTTPConnection(HTTPRequest):
                 self.set_state(WRITE, self.write_iter, output)
 
     def reset_state(self):
-        self.connection_ready()
-        self.ready = not self.close_after_response
+        ready = not self.close_after_response
         self.end_send_optimization()
+        self.connection_ready()
+        self.ready = ready
 
     def report_unhandled_exception(self, e, formatted_traceback):
         self.simple_response(httplib.INTERNAL_SERVER_ERROR)
@@ -681,6 +709,7 @@ class HTTPConnection(HTTPRequest):
             request.status_code = httplib.PARTIAL_CONTENT
         return output
 
+
 def create_http_handler(handler=None, websocket_handler=None):
     from calibre.srv.web_socket import WebSocketConnection
     static_cache = {}
@@ -689,6 +718,7 @@ def create_http_handler(handler=None, websocket_handler=None):
         def dummy_http_handler(data):
             return 'Hello'
         handler = dummy_http_handler
+
     @wraps(handler)
     def wrapper(*args, **kwargs):
         ans = WebSocketConnection(*args, **kwargs)

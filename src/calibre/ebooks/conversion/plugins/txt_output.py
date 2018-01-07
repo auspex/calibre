@@ -14,6 +14,7 @@ from calibre.ptempfile import TemporaryDirectory, TemporaryFile
 
 NEWLINE_TYPES = ['system', 'unix', 'old_mac', 'windows']
 
+
 class TXTOutput(OutputFormatPlugin):
 
     name = 'TXT Output'
@@ -26,11 +27,11 @@ class TXTOutput(OutputFormatPlugin):
             short_switch='n', choices=NEWLINE_TYPES,
             help=_('Type of newline to use. Options are %s. Default is \'system\'. '
                 'Use \'old_mac\' for compatibility with Mac OS 9 and earlier. '
-                'For Mac OS X use \'unix\'. \'system\' will default to the newline '
+                'For macOS use \'unix\'. \'system\' will default to the newline '
                 'type used by this OS.') % sorted(NEWLINE_TYPES)),
         OptionRecommendation(name='txt_output_encoding', recommended_value='utf-8',
             level=OptionRecommendation.LOW,
-            help=_('Specify the character encoding of the output document. ' \
+            help=_('Specify the character encoding of the output document. '
             'The default is utf-8.')),
         OptionRecommendation(name='inline_toc',
             recommended_value=False, level=OptionRecommendation.LOW,
@@ -55,20 +56,20 @@ class TXTOutput(OutputFormatPlugin):
                     '* textile: Produce Textile formatted text.')),
         OptionRecommendation(name='keep_links',
             recommended_value=False, level=OptionRecommendation.LOW,
-            help=_('Do not remove links within the document. This is only ' \
+            help=_('Do not remove links within the document. This is only '
             'useful when paired with a txt-output-formatting option that '
             'is not none because links are always removed with plain text output.')),
         OptionRecommendation(name='keep_image_references',
             recommended_value=False, level=OptionRecommendation.LOW,
-            help=_('Do not remove image references within the document. This is only ' \
+            help=_('Do not remove image references within the document. This is only '
             'useful when paired with a txt-output-formatting option that '
             'is not none because links are always removed with plain text output.')),
         OptionRecommendation(name='keep_color',
             recommended_value=False, level=OptionRecommendation.LOW,
-            help=_('Do not remove font color from output. This is only useful when ' \
-                   'txt-output-formatting is set to textile. Textile is the only ' \
-                   'formatting that supports setting font color. If this option is ' \
-                   'not specified font color will not be set and default to the ' \
+            help=_('Do not remove font color from output. This is only useful when '
+                   'txt-output-formatting is set to textile. Textile is the only '
+                   'formatting that supports setting font color. If this option is '
+                   'not specified font color will not be set and default to the '
                    'color displayed by the reader (generally this is black).')),
      ])
 
@@ -76,7 +77,6 @@ class TXTOutput(OutputFormatPlugin):
         from calibre.ebooks.txt.txtml import TXTMLizer
         from calibre.utils.cleantext import clean_ascii_chars
         from calibre.ebooks.txt.newlines import specified_newlines, TxtNewlines
-
 
         if opts.txt_output_formatting.lower() == 'markdown':
             from calibre.ebooks.txt.markdownml import MarkdownMLizer

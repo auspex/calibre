@@ -8,18 +8,19 @@ __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 
-
 from calibre.ebooks.metadata import check_isbn
 from calibre.ebooks.metadata.sources.base import Source, Option
 from calibre.utils.icu import lower
 from calibre.ebooks.metadata.book.base import Metadata
 
-BASE_URL = 'http://isbndb.com/api/books.xml?access_key=%s&page_number=1&results=subjects,authors,texts&'
+BASE_URL = 'https://isbndb.com/api/books.xml?access_key=%s&page_number=1&results=subjects,authors,texts&'
 
 
 class ISBNDB(Source):
 
     name = 'ISBNDB'
+    version = (1, 0, 0)
+    minimum_calibre_version = (2, 80, 0)
     description = _('Downloads metadata from isbndb.com')
 
     capabilities = frozenset(['identify'])
@@ -28,6 +29,7 @@ class ISBNDB(Source):
     supports_gzip_transfer_encoding = True
     # Shortcut, since we have no cached cover URLS
     cached_cover_url_is_reliable = False
+    ignore_ssl_errors = True
 
     options = (
             Option('isbndb_key', 'string', None, _('IsbnDB key:'),
@@ -38,8 +40,7 @@ class ISBNDB(Source):
     config_help_message = ('<p>'+_('To use metadata from isbndb.com you must sign'
             ' up for a free account and get an isbndb key and enter it below.'
             ' Instructions to get the key are '
-            '<a href="%s">here</a>.')) % 'http://isbndb.com/api/v1/docs/keys'
-
+            '<a href="%s">here</a>.')) % 'https://isbndb.com/api/v1/docs/keys'
 
     def __init__(self, *args, **kwargs):
         Source.__init__(self, *args, **kwargs)
@@ -64,7 +65,7 @@ class ISBNDB(Source):
     def is_configured(self):
         return self.isbndb_key is not None
 
-    def create_query(self, title=None, authors=None, identifiers={}): # {{{
+    def create_query(self, title=None, authors=None, identifiers={}):  # {{{
         from urllib import quote
         base_url = BASE_URL%self.isbndb_key
         isbn = check_isbn(identifiers.get('isbn', None))
@@ -89,7 +90,7 @@ class ISBNDB(Source):
         return base_url + q
     # }}}
 
-    def identify(self, log, result_queue, abort, title=None, authors=None, # {{{
+    def identify(self, log, result_queue, abort, title=None, authors=None,  # {{{
             identifiers={}, timeout=30):
         if not self.is_configured():
             return
@@ -144,7 +145,8 @@ class ISBNDB(Source):
                 if lower(a) in authors:
                     amatch = True
                     break
-            if not author_tokens: amatch = True
+            if not author_tokens:
+                amatch = True
             return match and amatch
 
         bl = feed.find('BookList')
@@ -181,7 +183,8 @@ class ISBNDB(Source):
             if not ismatch(title, authors):
                 continue
             publisher = tostring(bd.find('PublisherText'))
-            if not publisher: publisher = None
+            if not publisher:
+                publisher = None
             if publisher and 'audio' in publisher.lower():
                 continue
             mi = Metadata(title, authors)
@@ -221,6 +224,7 @@ class ISBNDB(Source):
         return candidates
     # }}}
 
+
 if __name__ == '__main__':
     # To run these test use:
     # calibre-debug -e src/calibre/ebooks/metadata/sources/isbndb.py
@@ -242,4 +246,3 @@ if __name__ == '__main__':
                 [title_test('Flatland', exact=False)]
             ),
     ])
-

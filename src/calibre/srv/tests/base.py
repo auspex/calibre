@@ -16,12 +16,14 @@ from calibre.srv.utils import ServerLog
 
 rmtree = partial(shutil.rmtree, ignore_errors=True)
 
+
 class BaseTest(unittest.TestCase):
 
     longMessage = True
     maxDiff = None
 
     ae = unittest.TestCase.assertEqual
+
 
 class LibraryBaseTest(BaseTest):
 
@@ -69,6 +71,7 @@ class LibraryBaseTest(BaseTest):
         args = (self.library_path ,) + args
         return LibraryServer(*args, **kwargs)
 
+
 class TestServer(Thread):
 
     daemon = True
@@ -93,6 +96,7 @@ class TestServer(Thread):
         kwargs['shutdown_timeout'] = kwargs.get('shutdown_timeout', 0.1)
         kwargs['listen_on'] = kwargs.get('listen_on', 'localhost')
         kwargs['port'] = kwargs.get('port', 0)
+        kwargs['userdb'] = kwargs.get('userdb', ':memory:')
 
     def run(self):
         try:
@@ -119,6 +123,7 @@ class TestServer(Thread):
     def change_handler(self, handler):
         from calibre.srv.http_response import create_http_handler
         self.loop.handler = create_http_handler(handler)
+
 
 class LibraryServer(TestServer):
 

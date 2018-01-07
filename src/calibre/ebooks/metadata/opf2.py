@@ -14,9 +14,9 @@ from urlparse import urlparse
 from lxml import etree
 
 from calibre.ebooks import escape_xpath_attr
-from calibre.ebooks.chardet import xml_to_unicode
 from calibre.constants import __appname__, __version__, filesystem_encoding
 from calibre.ebooks.metadata.toc import TOC
+from calibre.ebooks.metadata.utils import parse_opf, pretty_print_opf as _pretty_print
 from calibre.ebooks.metadata import string_to_authors, MetaInformation, check_isbn
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.utils.date import parse_date, isoformat
@@ -27,6 +27,7 @@ from calibre.utils.config import tweaks
 
 pretty_print_opf = False
 
+
 class PrettyPrint(object):
 
     def __enter__(self):
@@ -36,12 +37,10 @@ class PrettyPrint(object):
     def __exit__(self, *args):
         global pretty_print_opf
         pretty_print_opf = False
+
+
 pretty_print = PrettyPrint()
 
-def _pretty_print(root):
-    from calibre.ebooks.oeb.polish.pretty import pretty_opf, pretty_xml_tree
-    pretty_opf(root)
-    pretty_xml_tree(root)
 
 class Resource(object):  # {{{
 
@@ -126,6 +125,7 @@ class Resource(object):  # {{{
 
 # }}}
 
+
 class ResourceCollection(object):  # {{{
 
     def __init__(self):
@@ -179,6 +179,7 @@ class ResourceCollection(object):  # {{{
 
 # }}}
 
+
 class ManifestItem(Resource):  # {{{
 
     @staticmethod
@@ -195,6 +196,7 @@ class ManifestItem(Resource):  # {{{
     def media_type(self):
         def fget(self):
             return self.mime_type
+
         def fset(self, val):
             self.mime_type = val
         return property(fget=fget, fset=fset)
@@ -217,19 +219,23 @@ class ManifestItem(Resource):  # {{{
 
 # }}}
 
+
 class Manifest(ResourceCollection):  # {{{
+
+    def append_from_opf_manifest_item(self, item, dir):
+        self.append(ManifestItem.from_opf_manifest_item(item, dir))
+        id = item.get('id', '')
+        if not id:
+            id = 'id%d'%self.next_id
+        self[-1].id = id
+        self.next_id += 1
 
     @staticmethod
     def from_opf_manifest_element(items, dir):
         m = Manifest()
         for item in items:
             try:
-                m.append(ManifestItem.from_opf_manifest_item(item, dir))
-                id = item.get('id', '')
-                if not id:
-                    id = 'id%d'%m.next_id
-                m[-1].id = id
-                m.next_id += 1
+                m.append_from_opf_manifest_item(item, dir)
             except ValueError:
                 continue
         return m
@@ -285,6 +291,7 @@ class Manifest(ResourceCollection):  # {{{
 
 # }}}
 
+
 class Spine(ResourceCollection):  # {{{
 
     class Item(Resource):
@@ -303,10 +310,11 @@ class Spine(ResourceCollection):  # {{{
     def from_opf_spine_element(itemrefs, manifest):
         s = Spine(manifest)
         seen = set()
+        path_map = {i.id:i.path for i in s.manifest}
         for itemref in itemrefs:
             idref = itemref.get('idref', None)
             if idref is not None:
-                path = s.manifest.path_for_id(idref)
+                path = path_map.get(idref)
                 if path and path not in seen:
                     r = Spine.Item(lambda x:idref, path, is_path=True)
                     r.is_linear = itemref.get('linear', 'yes') == 'yes'
@@ -358,6 +366,7 @@ class Spine(ResourceCollection):  # {{{
 
 # }}}
 
+
 class Guide(ResourceCollection):  # {{{
 
     class Reference(Resource):
@@ -395,6 +404,7 @@ class Guide(ResourceCollection):  # {{{
             self[-1].title = ''
 
 # }}}
+
 
 class MetadataField(object):
 
@@ -438,6 +448,7 @@ class MetadataField(object):
             elem = obj.create_metadata_element(self.name, is_dc=self.is_dc)
         obj.set_text(elem, self.renderer(val))
 
+
 class TitleSortField(MetadataField):
 
     def __get__(self, obj, type=None):
@@ -465,6 +476,7 @@ class TitleSortField(MetadataField):
                 for attr in list(match.attrib):
                     if attr.endswith('file-as'):
                         del match.attrib[attr]
+
 
 def serialize_user_metadata(metadata_elem, all_user_metadata, tail='\n'+(' '*8)):
     from calibre.utils.config import to_json
@@ -496,10 +508,10 @@ def dump_dict(cats):
     return json.dumps(object_to_unicode(cats), ensure_ascii=False,
             skipkeys=True)
 
+
 class OPF(object):  # {{{
 
     MIMETYPE         = 'application/oebps-package+xml'
-    PARSER           = etree.XMLParser(recover=True)
     NAMESPACES       = {
                         None: "http://www.idpf.org/2007/opf",
                         'dc': "http://purl.org/dc/elements/1.1/",
@@ -526,6 +538,7 @@ class OPF(object):  # {{{
     pubdate_path    = XPath('descendant::*[re:match(name(), "date", "i")]')
     raster_cover_path = XPath('descendant::*[re:match(name(), "meta", "i") and ' +
             're:match(@name, "cover", "i") and @content]')
+    guide_cover_path = XPath('descendant::*[local-name()="guide"]/*[local-name()="reference" and re:match(@type, "cover", "i")]/@href')
     identifier_path = XPath('descendant::*[re:match(name(), "identifier", "i")]')
     application_id_path = XPath('descendant::*[re:match(name(), "identifier", "i") and '+
                             '(re:match(@opf:scheme, "calibre|libprs500", "i") or re:match(@scheme, "calibre|libprs500", "i"))]')
@@ -561,21 +574,11 @@ class OPF(object):  # {{{
                                 formatter=json.loads, renderer=dump_dict)
 
     def __init__(self, stream, basedir=os.getcwdu(), unquote_urls=True,
-            populate_spine=True, try_to_guess_cover=True):
-        if not hasattr(stream, 'read'):
-            stream = open(stream, 'rb')
-        raw = stream.read()
-        if not raw:
-            raise ValueError('Empty file: '+getattr(stream, 'name', 'stream'))
+            populate_spine=True, try_to_guess_cover=True, preparsed_opf=None, read_toc=True):
         self.try_to_guess_cover = try_to_guess_cover
         self.basedir  = self.base_dir = basedir
         self.path_to_html_toc = self.html_toc_fragment = None
-        raw, self.encoding = xml_to_unicode(raw, strip_encoding_pats=True,
-                resolve_entities=True, assume_utf8=True)
-        raw = raw[raw.find('<'):]
-        self.root     = etree.fromstring(raw, self.PARSER)
-        if self.root is None:
-            raise ValueError('Not an OPF file')
+        self.root = parse_opf(stream) if preparsed_opf is None else preparsed_opf
         try:
             self.package_version = float(self.root.get('version', None))
         except (AttributeError, TypeError, ValueError):
@@ -600,7 +603,10 @@ class OPF(object):  # {{{
         guide = self.guide_path(self.root)
         self.guide = Guide.from_opf_guide(guide, basedir) if guide else None
         self.cover_data = (None, None)
-        self.find_toc()
+        if read_toc:
+            self.find_toc()
+        else:
+            self.toc = None
         self.read_user_metadata()
 
     def read_user_metadata(self):
@@ -628,6 +634,9 @@ class OPF(object):  # {{{
         self._user_metadata_ = temp.get_all_user_metadata(True)
 
     def to_book_metadata(self):
+        if self.package_version >= 3.0:
+            from calibre.ebooks.metadata.opf3 import read_metadata
+            return read_metadata(self.root)
         ans = MetaInformation(self)
         for n, v in self._user_metadata_.items():
             ans.set_user_metadata(n, v)
@@ -660,7 +669,6 @@ class OPF(object):  # {{{
                 for item in self.manifest:
                     if 'toc' in item.href().lower():
                         toc = item.path
-
             if toc is None:
                 return
             self.toc = TOC(base_path=self.base_dir)
@@ -721,18 +729,17 @@ class OPF(object):  # {{{
         return [i.get('id') for i in items]
 
     def add_path_to_manifest(self, path, media_type):
-        has_path = False
         path = os.path.abspath(path)
         for i in self.itermanifest():
             xpath = os.path.join(self.base_dir, *(i.get('href', '').split('/')))
             if os.path.abspath(xpath) == path:
-                has_path = True
-                break
-        if not has_path:
-            href = os.path.relpath(path, self.base_dir).replace(os.sep, '/')
-            item = self.create_manifest_item(href, media_type)
-            manifest = self.manifest_ppath(self.root)[0]
-            manifest.append(item)
+                return i.get('id')
+        href = os.path.relpath(path, self.base_dir).replace(os.sep, '/')
+        item = self.create_manifest_item(href, media_type)
+        manifest = self.manifest_ppath(self.root)[0]
+        manifest.append(item)
+        self.manifest.append_from_opf_manifest_item(item, self.basedir)
+        return item.get('id')
 
     def iterspine(self):
         return self.spine_path(self.root)
@@ -941,10 +948,24 @@ class OPF(object):  # {{{
                 return self.get_text(match) or None
 
         def fset(self, val):
+            uuid_id = None
+            for attr in self.root.attrib:
+                if attr.endswith('unique-identifier'):
+                    uuid_id = self.root.attrib[attr]
+                    break
+
             matches = self.isbn_path(self.metadata)
             if not val:
                 for x in matches:
-                    x.getparent().remove(x)
+                    xid = x.get('id', None)
+                    is_package_identifier = uuid_id is not None and uuid_id == xid
+                    if is_package_identifier:
+                        self.set_text(x, str(uuid.uuid4()))
+                        for attr in x.attrib:
+                            if attr.endswith('scheme'):
+                                x.attrib[attr] = 'uuid'
+                    else:
+                        x.getparent().remove(x)
                 return
             if not matches:
                 attrib = {'{%s}scheme'%self.NAMESPACES['opf']: 'ISBN'}
@@ -1142,6 +1163,11 @@ class OPF(object):  # {{{
                 if k == 'page-progression-direction' or k.endswith('}page-progression-direction'):
                     return v
 
+    @property
+    def primary_writing_mode(self):
+        for m in self.XPath('//*[local-name()="meta" and @name="primary-writing-mode" and @content]')(self.root):
+            return m.get('content')
+
     def guess_cover(self):
         '''
         Try to guess a cover. Needed for some old/badly formed OPF files.
@@ -1163,6 +1189,15 @@ class OPF(object):  # {{{
                             return cpath
 
     @property
+    def epub3_raster_cover(self):
+        for item in self.itermanifest():
+            props = set((item.get('properties') or '').lower().split())
+            if 'cover-image' in props:
+                mt = item.get('media-type', '')
+                if mt and 'xml' not in mt and 'html' not in mt:
+                    return item.get('href', None)
+
+    @property
     def raster_cover(self):
         covers = self.raster_cover_path(self.metadata)
         if covers:
@@ -1175,14 +1210,37 @@ class OPF(object):  # {{{
             for item in self.itermanifest():
                 if item.get('href', None) == cover_id:
                     mt = item.get('media-type', '')
-                    if mt and mt.startswith('image/'):
-                        return item.get('href', None)
-        elif self.package_version >= 3.0:
-            for item in self.itermanifest():
-                if item.get('properties') == 'cover-image':
-                    mt = item.get('media-type', '')
                     if mt and 'xml' not in mt and 'html' not in mt:
                         return item.get('href', None)
+        elif self.package_version >= 3.0:
+            return self.epub3_raster_cover
+
+    @property
+    def guide_raster_cover(self):
+        covers = self.guide_cover_path(self.root)
+        if covers:
+            mt_map = {i.get('href'):i for i in self.itermanifest()}
+            for href in covers:
+                if href:
+                    i = mt_map.get(href)
+                    if i is not None:
+                        iid, mt = i.get('id'), i.get('media-type')
+                        if iid and mt and mt.lower() in {'image/png', 'image/jpeg', 'image/jpg', 'image/gif'}:
+                            return i
+
+    @property
+    def epub3_nav(self):
+        if self.package_version >= 3.0:
+            for item in self.itermanifest():
+                props = (item.get('properties') or '').lower().split()
+                if 'nav' in props:
+                    mt = item.get('media-type') or ''
+                    if 'html' in mt.lower():
+                        mid = item.get('id')
+                        if mid:
+                            path = self.manifest.path_for_id(mid)
+                            if path and os.path.exists(path):
+                                return path
 
     @dynamic_property
     def cover(self):
@@ -1258,6 +1316,7 @@ class OPF(object):  # {{{
             smap[child.get('name')] = (child, self.metadata.index(child))
         if len(smap) == 2 and smap['calibre:series'][1] > smap['calibre:series_index'][1]:
             s, si = smap['calibre:series'][0], smap['calibre:series_index'][0]
+
             def swap(attr):
                 t = s.get(attr, '')
                 s.set(attr, si.get(attr, '')), si.set(attr, t)
@@ -1317,6 +1376,7 @@ class OPF(object):  # {{{
 
 # }}}
 
+
 class OPFCreator(Metadata):
 
     def __init__(self, base_path, other):
@@ -1329,6 +1389,7 @@ class OPFCreator(Metadata):
         Metadata.__init__(self, title='', other=other)
         self.base_path = os.path.abspath(base_path)
         self.page_progression_direction = None
+        self.primary_writing_mode = None
         if self.application_id is None:
             self.application_id = str(uuid.uuid4())
         if not isinstance(self.toc, TOC):
@@ -1452,7 +1513,7 @@ class OPFCreator(Metadata):
                 fa['file-as'] = self.author_sort
             a(DC_ELEM('creator', author, opf_attrs=fa))
         a(DC_ELEM('contributor', '%s (%s) [%s]'%(__appname__, __version__,
-            'http://calibre-ebook.com'), opf_attrs={'role':'bkp',
+            'https://calibre-ebook.com'), opf_attrs={'role':'bkp',
                 'file-as':__appname__}))
         a(DC_ELEM('identifier', str(self.application_id),
             opf_attrs={'scheme':__appname__},
@@ -1491,6 +1552,8 @@ class OPFCreator(Metadata):
             from calibre.ebooks.metadata.book.json_codec import object_to_unicode
             a(CAL_ELEM('calibre:user_categories',
                        json.dumps(object_to_unicode(self.user_categories))))
+        if self.primary_writing_mode:
+            a(M.meta(name='primary-writing-mode', content=self.primary_writing_mode))
         manifest = E.manifest()
         if self.manifest is not None:
             for ref in self.manifest:
@@ -1531,6 +1594,7 @@ class OPFCreator(Metadata):
                 guide
         )
         root.set('unique-identifier', __appname__+'_id')
+        root.set('version', '2.0')
         raw = etree.tostring(root, pretty_print=True, xml_declaration=True,
                 encoding=encoding)
         raw = raw.replace(DNS, OPF2_NS)
@@ -1554,7 +1618,7 @@ def metadata_to_opf(mi, as_string=True, default_lang=None):
 
     if not mi.book_producer:
         mi.book_producer = __appname__ + ' (%s) '%__version__ + \
-            '[http://calibre-ebook.com]'
+            '[https://calibre-ebook.com]'
 
     if not mi.languages:
         lang = (get_lang().replace('_', '-').partition('-')[0] if default_lang
@@ -1574,6 +1638,7 @@ def metadata_to_opf(mi, as_string=True, default_lang=None):
     metadata = root[0]
     guide = root[1]
     metadata[0].tail = '\n'+(' '*8)
+
     def factory(tag, text=None, sort=None, role=None, scheme=None, name=None,
             content=None):
         attrib = {}
@@ -1761,11 +1826,14 @@ class OPFTest(unittest.TestCase):
         self.opf.smart_update(MetaInformation(self.opf))
         self.testReading()
 
+
 def suite():
     return unittest.TestLoader().loadTestsFromTestCase(OPFTest)
 
+
 def test():
     unittest.TextTestRunner(verbosity=2).run(suite())
+
 
 def test_user_metadata():
     from cStringIO import StringIO
@@ -1791,6 +1859,7 @@ def test_user_metadata():
     assert um == opf._user_metadata_
     assert um == opf2._user_metadata_
     print opf.render()
+
 
 if __name__ == '__main__':
     # test_user_metadata()

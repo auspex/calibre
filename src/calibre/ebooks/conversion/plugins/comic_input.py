@@ -13,6 +13,7 @@ from calibre.customize.conversion import InputFormatPlugin, OptionRecommendation
 from calibre import CurrentDir
 from calibre.ptempfile import PersistentTemporaryDirectory
 
+
 class ComicInput(InputFormatPlugin):
 
     name        = 'Comic Input'
@@ -23,10 +24,10 @@ class ComicInput(InputFormatPlugin):
     core_usage = -1
 
     options = set([
-        OptionRecommendation(name='colors', recommended_value=256,
-            help=_('Number of colors for grayscale image conversion. Default: '
-                '%default. Values of less than 256 may result in blurred text '
-                'on your device if you are creating your comics in EPUB format.')),
+        OptionRecommendation(name='colors', recommended_value=0,
+            help=_('Reduce the number of colors used in the image. This works only'
+                   ' if you choose the PNG output format. It is useful to reduce file sizes.'
+                   ' Set to zero to turn off. Maximum value is 256. It is off by default.')),
         OptionRecommendation(name='dont_normalize', recommended_value=False,
             help=_('Disable normalize (improve contrast) color range '
             'for pictures. Default: False')),
@@ -54,7 +55,7 @@ class ComicInput(InputFormatPlugin):
               "alphabetically by name. Instead use the order they were "
               "added to the comic.")),
         OptionRecommendation(name='output_format', choices=['png', 'jpg'],
-            recommended_value='png', help=_('The format that images in the created ebook '
+            recommended_value='png', help=_('The format that images in the created e-book '
                 'are converted to. You can experiment to see which format gives '
                 'you optimal size and look on your device.')),
         OptionRecommendation(name='no_process', recommended_value=False,
@@ -178,7 +179,8 @@ class ComicInput(InputFormatPlugin):
             if not os.path.exists(cdir):
                 os.makedirs(cdir)
             pages = self.get_pages(fname, cdir)
-            if not pages: continue
+            if not pages:
+                continue
             wrappers = self.create_wrappers(pages)
             comics.append((title, pages, wrappers))
 
@@ -191,7 +193,8 @@ class ComicInput(InputFormatPlugin):
         entries = []
 
         def href(x):
-            if len(comics) == 1: return os.path.basename(x)
+            if len(comics) == 1:
+                return os.path.basename(x)
             return '/'.join(x.split(os.sep)[-2:])
 
         for comic in comics:
@@ -258,4 +261,3 @@ class ComicInput(InputFormatPlugin):
                 f.write(wrapper.encode('utf-8'))
             wrappers.append(page)
         return wrappers
-

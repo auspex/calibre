@@ -25,9 +25,11 @@ Point = namedtuple('Point', 'x y')
 ColorState = namedtuple('ColorState', 'color opacity do')
 GlyphInfo = namedtuple('GlyphInfo', 'name size stretch positions indices')
 
+
 def repr_transform(t):
     vals = map(fmtnum, (t.m11(), t.m12(), t.m21(), t.m22(), t.dx(), t.dy()))
     return '[%s]'%' '.join(vals)
+
 
 def store_error(func):
 
@@ -41,11 +43,13 @@ def store_error(func):
 
     return errh
 
+
 class Font(FontMetrics):
 
     def __init__(self, sfnt):
         FontMetrics.__init__(self, sfnt)
         self.glyph_map = {}
+
 
 class PdfEngine(QPaintEngine):
 
@@ -59,7 +63,7 @@ class PdfEngine(QPaintEngine):
     def __init__(self, file_object, page_width, page_height, left_margin,
                  top_margin, right_margin, bottom_margin, width, height,
                  errors=print, debug=print, compress=True,
-                 mark_links=False, opts=None):
+                 mark_links=False, opts=None, page_margins=(0, 0, 0, 0)):
         QPaintEngine.__init__(self, self.FEATURES)
         self.file_object = file_object
         self.compress, self.mark_links = compress, mark_links
@@ -91,8 +95,9 @@ class PdfEngine(QPaintEngine):
         self.qt_hack, err = plugins['qt_hack']
         self.has_footers = opts is not None and (opts.pdf_page_numbers or opts.pdf_footer_template is not None)
         self.has_headers = opts is not None and opts.pdf_header_template is not None
-        self.header_height = (opts.margin_top or 0) if opts else 0
-        self.footer_height = (opts.margin_bottom) or 0 if opts else 0
+        ml, mr, mt, mb = page_margins
+        self.header_height = mt
+        self.footer_height = mb
         if err:
             raise RuntimeError('Failed to load qt_hack with err: %s'%err)
 
@@ -272,6 +277,7 @@ class PdfEngine(QPaintEngine):
             try:
                 self.fonts[gi.name] = metrics = self.create_sfnt(text_item)
             except UnsupportedFont:
+                self.debug('Failed to load font: %s, drawing text as outlines...' % names)
                 return super(PdfEngine, self).drawTextItem(point, text_item)
         for glyph_id in gi.indices:
             try:
@@ -285,7 +291,8 @@ class PdfEngine(QPaintEngine):
             last_x, last_y = x, y
 
         if not self.content_written_to_current_page:
-            ypositions = [y for x, y in gi.positions]
+            dy = self.graphics.current_state.transform.dy()
+            ypositions = [y + dy for x, y in gi.positions]
             miny = min(ypositions or (0,))
             maxy = max(ypositions or (self.pixel_height,))
             page_top = self.header_height if self.has_headers else 0
@@ -335,12 +342,13 @@ class PdfEngine(QPaintEngine):
             link.append((llx, lly, urx, ury))
         self.pdf.links.add(current_item, start_page, links, anchors)
 
+
 class PdfDevice(QPaintDevice):  # {{{
 
     def __init__(self, file_object, page_size=A4, left_margin=inch,
                  top_margin=inch, right_margin=inch, bottom_margin=inch,
                  xdpi=1200, ydpi=1200, errors=print, debug=print,
-                 compress=True, mark_links=False, opts=None):
+                 compress=True, mark_links=False, opts=None, page_margins=(0, 0, 0, 0)):
         QPaintDevice.__init__(self)
         self.xdpi, self.ydpi = xdpi, ydpi
         self.page_width, self.page_height = page_size
@@ -352,7 +360,7 @@ class PdfDevice(QPaintDevice):  # {{{
                                 left_margin, top_margin, right_margin,
                                 bottom_margin, self.width(), self.height(),
                                 errors=errors, debug=debug, compress=compress,
-                                mark_links=mark_links, opts=opts)
+                                mark_links=mark_links, opts=opts, page_margins=page_margins)
         self.add_outline = self.engine.add_outline
         self.add_links = self.engine.add_links
 

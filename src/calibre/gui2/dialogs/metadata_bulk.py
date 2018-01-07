@@ -1,66 +1,58 @@
-__license__   = 'GPL v3'
-__copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
+#!/usr/bin/env python2
+# vim:fileencoding=utf-8
+# License: GPLv3 Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>
 
-'''Dialog to edit metadata in bulk'''
-
-import re, os
-from collections import namedtuple, defaultdict
+import re
+from collections import defaultdict, namedtuple
+from io import BytesIO
 from threading import Thread
 
-from PyQt5.Qt import Qt, QDialog, QGridLayout, QVBoxLayout, QFont, QLabel, \
-                     pyqtSignal, QDialogButtonBox, QInputDialog, QLineEdit, \
-                     QDateTime, QCompleter, QCoreApplication, QSize
+from PyQt5.Qt import (
+    QCompleter, QCoreApplication, QDateTime, QDialog, QDialogButtonBox, QFont,
+    QGridLayout, QInputDialog, QLabel, QLineEdit, QSize, Qt, QVBoxLayout, pyqtSignal
+)
 
+from calibre import prints
+from calibre.constants import DEBUG
+from calibre.db import _get_next_series_num_for_list
+from calibre.ebooks.metadata import authors_to_string, string_to_authors, title_sort
+from calibre.ebooks.metadata.book.formatter import SafeFormat
+from calibre.ebooks.metadata.opf2 import OPF
+from calibre.gui2 import (
+    UNDEFINED_QDATETIME, FunctionDispatcher, error_dialog, gprefs, question_dialog
+)
+from calibre.gui2.custom_column_widgets import populate_metadata_page
 from calibre.gui2.dialogs.metadata_bulk_ui import Ui_MetadataBulkDialog
 from calibre.gui2.dialogs.tag_editor import TagEditor
-from calibre.ebooks.metadata import string_to_authors, authors_to_string, title_sort
-from calibre.ebooks.metadata.book.formatter import SafeFormat
-from calibre.gui2.custom_column_widgets import populate_metadata_page
-from calibre.gui2 import error_dialog, UNDEFINED_QDATETIME, \
-    gprefs, question_dialog, FunctionDispatcher
-from calibre.gui2.progress_indicator import ProgressIndicator
+from calibre.gui2.dialogs.template_line_editor import TemplateLineEditor
 from calibre.gui2.metadata.basic_widgets import CalendarWidget
-from calibre.utils.config import dynamic, JSONConfig
-from calibre.utils.titlecase import titlecase
-from calibre.utils.icu import sort_key, capitalize
-from calibre.utils.config import prefs, tweaks
-from calibre.utils.imghdr import identify
+from calibre.gui2.progress_indicator import ProgressIndicator
+from calibre.utils.config import JSONConfig, dynamic, prefs, tweaks
 from calibre.utils.date import qt_to_dt
-from calibre.db import _get_next_series_num_for_list
-
-def get_cover_data(stream, ext):  # {{{
-    from calibre.ebooks.metadata.meta import get_metadata
-    old = prefs['read_file_metadata']
-    if not old:
-        prefs['read_file_metadata'] = True
-    cdata = area = None
-
-    try:
-        with stream:
-            mi = get_metadata(stream, ext)
-        if mi.cover and os.access(mi.cover, os.R_OK):
-            cdata = open(mi.cover).read()
-        elif mi.cover_data[1] is not None:
-            cdata = mi.cover_data[1]
-        if cdata:
-            fmt, width, height = identify(cdata)
-            area = width*height
-    except:
-        cdata = area = None
-
-    if old != prefs['read_file_metadata']:
-        prefs['read_file_metadata'] = old
-
-    return cdata, area
-# }}}
+from calibre.utils.icu import capitalize, sort_key
+from calibre.utils.titlecase import titlecase
+from calibre.gui2.widgets import LineEditECM
 
 Settings = namedtuple('Settings',
-    'remove_all remove add au aus do_aus rating pub do_series do_autonumber do_remove_format '
-    'remove_format do_swap_ta do_remove_conv do_auto_author series do_series_restart series_start_value series_increment '
+    'remove_all remove add au aus do_aus rating pub do_series do_autonumber '
+    'do_swap_ta do_remove_conv do_auto_author series do_series_restart series_start_value series_increment '
     'do_title_case cover_action clear_series clear_pub pubdate adddate do_title_sort languages clear_languages '
-    'restore_original comments generate_cover_settings')
+    'restore_original comments generate_cover_settings read_file_metadata casing_algorithm')
 
 null = object()
+
+
+class Caser(LineEditECM):
+
+    def __init__(self, title):
+        self.title = title
+
+    def text(self):
+        return self.title
+
+    def setText(self, text):
+        self.title = text
+
 
 class MyBlockingBusy(QDialog):  # {{{
 
@@ -130,17 +122,63 @@ class MyBlockingBusy(QDialog):  # {{{
 
         self.all_done.emit()
 
+    def read_file_metadata(self, args):
+        from calibre.utils.ipc.simple_worker import offload_worker
+        db = self.db.new_api
+        worker = offload_worker()
+        try:
+            for book_id in self.ids:
+                fmts = db.formats(book_id, verify_formats=False)
+                paths = filter(None, [db.format_abspath(book_id, fmt) for fmt in fmts])
+                if paths:
+                    ret = worker(
+                        'calibre.ebooks.metadata.worker', 'read_metadata_bulk',
+                        args.read_file_metadata, args.cover_action == 'fromfmt', paths)
+                    if ret['tb'] is not None:
+                        prints(ret['tb'])
+                    else:
+                        ans = ret['result']
+                        opf, cdata = ans['opf'], ans['cdata']
+                        if opf is not None:
+                            try:
+                                mi = OPF(BytesIO(opf), populate_spine=False, try_to_guess_cover=False).to_book_metadata()
+                            except Exception:
+                                import traceback
+                                traceback.print_exc()
+                            else:
+                                db.set_metadata(book_id, mi, allow_case_change=True)
+                        if cdata is not None:
+                            db.set_cover({book_id: cdata})
+        finally:
+            worker.shutdown()
+
     def do_all(self):
         cache = self.db.new_api
         args = self.args
+        from_file = args.cover_action == 'fromfmt' or args.read_file_metadata
+        if from_file:
+            old = prefs['read_file_metadata']
+            if not old:
+                prefs['read_file_metadata'] = True
+            try:
+                self.read_file_metadata(args)
+            finally:
+                if old != prefs['read_file_metadata']:
+                    prefs['read_file_metadata'] = old
+
+        def change_title_casing(val):
+            caser = Caser(val)
+            getattr(caser, args.casing_algorithm)()
+            return caser.title
 
         # Title and authors
         if args.do_swap_ta:
             title_map = cache.all_field_for('title', self.ids)
             authors_map = cache.all_field_for('authors', self.ids)
+
             def new_title(authors):
                 ans = authors_to_string(authors)
-                return titlecase(ans) if args.do_title_case else ans
+                return change_title_casing(ans) if args.do_title_case else ans
             new_title_map = {bid:new_title(authors) for bid, authors in authors_map.iteritems()}
             new_authors_map = {bid:string_to_authors(title) for bid, title in title_map.iteritems()}
             cache.set_field('authors', new_authors_map)
@@ -148,11 +186,12 @@ class MyBlockingBusy(QDialog):  # {{{
 
         if args.do_title_case and not args.do_swap_ta:
             title_map = cache.all_field_for('title', self.ids)
-            cache.set_field('title', {bid:titlecase(title) for bid, title in title_map.iteritems()})
+            cache.set_field('title', {bid:change_title_casing(title) for bid, title in title_map.iteritems()})
 
         if args.do_title_sort:
             lang_map = cache.all_field_for('languages', self.ids)
             title_map = cache.all_field_for('title', self.ids)
+
             def get_sort(book_id):
                 if args.languages:
                     lang = args.languages[0]
@@ -184,28 +223,13 @@ class MyBlockingBusy(QDialog):  # {{{
                 mi = self.db.get_metadata(book_id, index_is_id=True)
                 cdata = generate_cover(mi, prefs=args.generate_cover_settings)
                 cache.set_cover({book_id:cdata})
-        elif args.cover_action == 'fromfmt':
-            for book_id in self.ids:
-                fmts = cache.formats(book_id, verify_formats=False)
-                if fmts:
-                    covers = []
-                    for fmt in fmts:
-                        fmtf = cache.format(book_id, fmt, as_file=True)
-                        if fmtf is None:
-                            continue
-                        cdata, area = get_cover_data(fmtf, fmt)
-                        if cdata:
-                            covers.append((cdata, area))
-                    covers.sort(key=lambda x: x[1])
-                    if covers:
-                        cache.set_cover({book_id:covers[-1][0]})
         elif args.cover_action == 'trim':
-            from calibre.utils.img import remove_borders, image_to_data, image_from_data
+            from calibre.utils.img import remove_borders_from_image, image_to_data, image_from_data
             for book_id in self.ids:
                 cdata = cache.cover(book_id)
                 if cdata:
                     img = image_from_data(cdata)
-                    nimg = remove_borders(img)
+                    nimg = remove_borders_from_image(img)
                     if nimg is not img:
                         cdata = image_to_data(nimg)
                         cache.set_cover({book_id:cdata})
@@ -218,10 +242,6 @@ class MyBlockingBusy(QDialog):  # {{{
             if cdata:
                 cache.set_cover({bid:cdata for bid in self.ids if bid != book_id})
 
-        # Formats
-        if args.do_remove_format:
-            cache.remove_formats({bid:(args.remove_format,) for bid in self.ids})
-
         if args.restore_original:
             for book_id in self.ids:
                 formats = cache.formats(book_id)
@@ -231,7 +251,7 @@ class MyBlockingBusy(QDialog):  # {{{
 
         # Various fields
         if args.rating != -1:
-            cache.set_field('rating', {bid:args.rating*2 for bid in self.ids})
+            cache.set_field('rating', {bid:args.rating for bid in self.ids})
 
         if args.clear_pub:
             cache.set_field('publisher', {bid:'' for bid in self.ids})
@@ -292,6 +312,7 @@ class MyBlockingBusy(QDialog):  # {{{
 
 # }}}
 
+
 class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
 
     s_r_functions = {''              : lambda x: x,
@@ -302,7 +323,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
                     }
 
     s_r_match_modes = [_('Character match'),
-                            _('Regular Expression'),
+                            _('Regular expression'),
                       ]
 
     s_r_replace_modes = [_('Replace field'),
@@ -335,12 +356,8 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
 
         self.initialize_combos()
 
-        for f in sorted(self.db.all_formats()):
-            self.remove_format.addItem(f)
-
-        self.remove_format.setCurrentIndex(-1)
-
         self.series.currentIndexChanged[int].connect(self.series_changed)
+        self.rating.currentIndexChanged.connect(lambda:self.apply_rating.setChecked(True))
         self.series.editTextChanged.connect(self.series_changed)
         self.tag_editor_button.clicked.connect(self.tag_editor)
         self.autonumber_series.stateChanged[int].connect(self.auto_number_changed)
@@ -363,6 +380,15 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.adddate.setSpecialValueText(_('Undefined'))
         self.clear_adddate_button.clicked.connect(self.clear_adddate)
         self.adddate.dateTimeChanged.connect(self.do_apply_adddate)
+        self.casing_algorithm.addItems([
+            _('Title case'), _('Capitalize'), _('Upper case'), _('Lower case'), _('Swap case')
+        ])
+        self.casing_map = ['title_case', 'capitalize', 'upper_case', 'lower_case', 'swap_case']
+        prevca = gprefs.get('bulk-mde-casing-algorithm', 'title_case')
+        idx = max(0, self.casing_map.index(prevca))
+        self.casing_algorithm.setCurrentIndex(idx)
+        self.casing_algorithm.setEnabled(False)
+        self.change_title_to_title_case.toggled.connect(lambda : self.casing_algorithm.setEnabled(self.change_title_to_title_case.isChecked()))
 
         if len(self.db.custom_field_keys(include_composites=False)) == 0:
             self.central_widget.removeTab(1)
@@ -443,6 +469,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
     def prepare_search_and_replace(self):
         self.search_for.initialize('bulk_edit_search_for')
         self.replace_with.initialize('bulk_edit_replace_with')
+        self.s_r_template.setLineEdit(TemplateLineEditor(self.s_r_template))
         self.s_r_template.initialize('bulk_edit_template')
         self.test_text.initialize('bulk_edit_test_test')
         self.all_fields = ['']
@@ -450,7 +477,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         fm = self.db.field_metadata
         for f in fm:
             if (f in ['author_sort'] or
-                    (fm[f]['datatype'] in ['text', 'series', 'enumeration', 'comments'] and
+                    (fm[f]['datatype'] in ['text', 'series', 'enumeration', 'comments', 'rating'] and
                      fm[f].get('search_terms', None) and
                      f not in ['formats', 'ondevice', 'series_sort']) or
                     (fm[f]['datatype'] in ['int', 'float', 'bool', 'datetime'] and
@@ -514,7 +541,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
 
         self.regexp_heading = _(
                  'In regular expression mode, the search text is an '
-                 'arbitrary python-compatible regular expression. The '
+                 'arbitrary Python-compatible regular expression. The '
                  'replacement text can contain backreferences to parenthesized '
                  'expressions in the pattern. The search is not anchored, '
                  'and can match and replace multiple times on the same string. '
@@ -523,8 +550,8 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
                  'The destination box specifies the field where the result after '
                  'matching and replacement is to be assigned. You can replace '
                  'the text in the field, or prepend or append the matched text. '
-                 'See <a href="http://docs.python.org/library/re.html"> '
-                 'this reference</a> for more information on python\'s regular '
+                 'See <a href="https://docs.python.org/library/re.html">'
+                 'this reference</a> for more information on Python\'s regular '
                  'expressions, and in particular the \'sub\' function.'
                  )
 
@@ -750,6 +777,18 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
                 raise Exception(_('You must specify a destination when source is '
                                   'a composite field or a template'))
             dest = src
+
+        if self.destination_field_fm['datatype'] == 'rating' and val[0]:
+            ok = True
+            try:
+                v = int(val[0])
+                if v < 0 or v > 10:
+                    ok = False
+            except:
+                ok = False
+            if not ok:
+                raise Exception(_('The replacement value for a rating column must '
+                                  'be empty or an integer between 0 and 10'))
         dest_mode = self.replace_mode.currentIndex()
 
         if self.destination_field_fm['is_csp']:
@@ -878,6 +917,13 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
             if dest == 'title' and len(val) == 0:
                 val = _('Unknown')
 
+        if not val and dfm['datatype'] == 'datetime':
+            val = None
+        if dfm['datatype'] == 'rating':
+            if (not val or int(val) == 0):
+                val = None
+            if dest == 'rating' and val:
+                val = (int(val) // 2) * 2
         self.set_field_calls[dest][book_id] = val
     # }}}
 
@@ -964,7 +1010,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
 
         if self.s_r_error is not None and do_sr:
             error_dialog(self, _('Search/replace invalid'),
-                    _('Search pattern is invalid: %s')%self.s_r_error.message,
+                    _('Search/replace is invalid: %s')%self.s_r_error.message,
                     show=True)
             return False
         self.changed = bool(self.ids)
@@ -981,7 +1027,9 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         au = unicode(self.authors.text())
         aus = unicode(self.author_sort.text())
         do_aus = self.author_sort.isEnabled()
-        rating = self.rating.value()
+        rating = self.rating.rating_value
+        if not self.apply_rating.isChecked():
+            rating = -1
         pub = unicode(self.publisher.text())
         do_series = self.write_series
         clear_series = self.clear_series.isChecked()
@@ -991,13 +1039,12 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         do_series_restart = self.series_numbering_restarts.isChecked()
         series_start_value = self.series_start_number.value()
         series_increment = self.series_increment.value()
-        do_remove_format = self.remove_format.currentIndex() > -1
-        remove_format = unicode(self.remove_format.currentText())
         do_swap_ta = self.swap_title_and_author.isChecked()
         do_remove_conv = self.remove_conversion_settings.isChecked()
         do_auto_author = self.auto_author_sort.isChecked()
         do_title_case = self.change_title_to_title_case.isChecked()
         do_title_sort = self.update_title_sort.isChecked()
+        read_file_metadata = self.read_file_metadata.isChecked()
         clear_languages = self.clear_languages.isChecked()
         restore_original = self.restore_original.isChecked()
         languages = self.languages.lang_codes
@@ -1019,12 +1066,17 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         elif self.cover_clone.isChecked():
             cover_action = 'clone'
 
-        args = Settings(remove_all, remove, add, au, aus, do_aus, rating, pub, do_series,
-                do_autonumber, do_remove_format, remove_format, do_swap_ta,
-                do_remove_conv, do_auto_author, series, do_series_restart,
-                series_start_value, series_increment, do_title_case, cover_action, clear_series, clear_pub,
-                pubdate, adddate, do_title_sort, languages, clear_languages,
-                restore_original, self.comments, self.generate_cover_settings)
+        args = Settings(
+            remove_all, remove, add, au, aus, do_aus, rating, pub, do_series,
+            do_autonumber, do_swap_ta, do_remove_conv, do_auto_author, series,
+            do_series_restart, series_start_value, series_increment,
+            do_title_case, cover_action, clear_series, clear_pub, pubdate,
+            adddate, do_title_sort, languages, clear_languages,
+            restore_original, self.comments, self.generate_cover_settings,
+            read_file_metadata, self.casing_map[self.casing_algorithm.currentIndex()])
+        if DEBUG:
+            print('Running bulk metadata operation with settings:')
+            print(args)
 
         self.set_field_calls = defaultdict(dict)
         bb = MyBlockingBusy(args, self.ids, self.db, self.refresh_books,
@@ -1047,6 +1099,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
                     show=True)
 
         dynamic['s_r_search_mode'] = self.search_mode.currentIndex()
+        gprefs.set('bulk-mde-casing-algorithm', args.casing_algorithm)
         self.db.clean()
         return QDialog.accept(self)
 
@@ -1201,5 +1254,3 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.results_count.setValue(999)
         self.starting_from.setValue(1)
         self.multiple_separator.setText(" ::: ")
-
-

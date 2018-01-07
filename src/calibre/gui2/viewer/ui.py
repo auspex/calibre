@@ -14,7 +14,7 @@ from PyQt5.Qt import (
     QRegExpValidator, QRegExp, QPalette, QColor, QBrush, QPainter,
     QDockWidget, QSize, QWebView, QLabel, QVBoxLayout)
 
-from calibre.gui2 import rating_font, error_dialog
+from calibre.gui2 import rating_font, error_dialog, open_url
 from calibre.gui2.main_window import MainWindow
 from calibre.gui2.search_box import SearchBox2
 from calibre.gui2.viewer.documentview import DocumentView
@@ -22,6 +22,7 @@ from calibre.gui2.viewer.bookmarkmanager import BookmarkManager
 from calibre.gui2.viewer.toc import TOCView, TOCSearch
 from calibre.gui2.viewer.footnote import FootnotesView
 from calibre.utils.localization import is_rtl
+
 
 class DoubleSpinBox(QDoubleSpinBox):  # {{{
 
@@ -44,6 +45,7 @@ class DoubleSpinBox(QDoubleSpinBox):  # {{{
         self.value_changed.emit(self.value(), self.maximum())
 # }}}
 
+
 class Reference(QLineEdit):  # {{{
 
     goto = pyqtSignal(object)
@@ -64,6 +66,7 @@ class Reference(QLineEdit):  # {{{
         self.goto.emit(text)
 # }}}
 
+
 class Metadata(QWebView):  # {{{
 
     def __init__(self, parent):
@@ -71,25 +74,32 @@ class Metadata(QWebView):  # {{{
         s = self.settings()
         s.setAttribute(s.JavascriptEnabled, False)
         self.page().setLinkDelegationPolicy(self.page().DelegateAllLinks)
+        self.page().linkClicked.connect(self.link_clicked)
         self.setAttribute(Qt.WA_OpaquePaintEvent, False)
         palette = self.palette()
         palette.setBrush(QPalette.Base, Qt.transparent)
         self.page().setPalette(palette)
-        self.css = P('templates/book_details.css', data=True).decode('utf-8')
         self.setVisible(False)
+
+    def link_clicked(self, qurl):
+        if qurl.scheme() in ('http', 'https'):
+            return open_url(qurl)
 
     def update_layout(self):
         self.setGeometry(0, 0, self.parent().width(), self.parent().height())
 
-    def show_opf(self, opf, ext=''):
-        from calibre.gui2.book_details import render_html
+    def show_metadata(self, mi, ext=''):
+        from calibre.gui2 import default_author_link
+        from calibre.gui2.book_details import render_html, css
         from calibre.ebooks.metadata.book.render import mi_to_html
 
-        def render_data(mi, use_roman_numbers=True, all_fields=False):
-            return mi_to_html(mi, use_roman_numbers=use_roman_numbers, rating_font=rating_font(), rtl=is_rtl())
+        def render_data(mi, use_roman_numbers=True, all_fields=False, pref_name='book_display_fields'):
+            return mi_to_html(
+                mi, use_roman_numbers=use_roman_numbers, rating_font=rating_font(), rtl=is_rtl(),
+                default_author_link=default_author_link()
+            )
 
-        mi = opf.to_book_metadata()
-        html = render_html(mi, self.css, True, self, render_data_func=render_data)
+        html = render_html(mi, css(), True, self, render_data_func=render_data)
         self.setHtml(html)
 
     def setVisible(self, x):
@@ -103,6 +113,7 @@ class Metadata(QWebView):  # {{{
         p.end()
         QWebView.paintEvent(self, ev)
 # }}}
+
 
 class History(list):  # {{{
 
@@ -172,6 +183,7 @@ class History(list):  # {{{
     def __str__(self):
         return 'History: Items=%s back_pos=%s insert_pos=%s forward_pos=%s' % (tuple(self), self.back_pos, self.insert_pos, self.forward_pos)
 
+
 def test_history():
     h = History()
     for i in xrange(4):
@@ -182,6 +194,7 @@ def test_history():
     h.add(9)
     assert h == [0, 9]
 # }}}
+
 
 class ToolBar(QToolBar):  # {{{
 
@@ -195,6 +208,7 @@ class ToolBar(QToolBar):  # {{{
             ev.accept()
             sm()
 # }}}
+
 
 class Main(MainWindow):
 
@@ -276,7 +290,6 @@ class Main(MainWindow):
         d.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
 
         self.footnotes_dock = d = QDockWidget(_('Footnotes'), self)
-        d.visibilityChanged.connect(self.footnote_visibility_changed)
         d.setContextMenuPolicy(Qt.CustomContextMenu)
         self.footnotes_view = FootnotesView(self)
         self.footnotes_view.follow_link.connect(self.view.follow_footnote_link)
@@ -384,7 +397,7 @@ class Main(MainWindow):
         a('forward', _('Forward'), 'forward.png')
         self.tool_bar.addSeparator()
 
-        a('open_ebook', _('Open ebook'), 'document_open.png', menu_name='open_history')
+        a('open_ebook', _('Open e-book'), 'document_open.png', menu_name='open_history')
         a('copy', _('Copy to clipboard'), 'edit-copy.png').setDisabled(True)
         a('font_size_larger', _('Increase font size'), 'font_size_larger.png')
         a('font_size_smaller', _('Decrease font size'), 'font_size_smaller.png')

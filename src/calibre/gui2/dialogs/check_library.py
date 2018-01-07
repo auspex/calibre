@@ -16,6 +16,7 @@ from calibre.library.check_library import CheckLibrary, CHECKS
 from calibre.utils.recycle_bin import delete_file, delete_tree
 from calibre import prints, as_unicode
 
+
 class DBCheck(QDialog):  # {{{
 
     update_msg = pyqtSignal(object)
@@ -36,7 +37,6 @@ class DBCheck(QDialog):  # {{{
         self.resize(self.sizeHint() + QSize(100, 50))
         self.error = None
         self.db = db.new_api
-        self.closed_orig_conn = False
         self.rejected = False
 
     def start(self):
@@ -70,8 +70,10 @@ class DBCheck(QDialog):  # {{{
 
 # }}}
 
+
 class Item(QTreeWidgetItem):
     pass
+
 
 class CheckLibraryDialog(QDialog):
 
@@ -79,7 +81,7 @@ class CheckLibraryDialog(QDialog):
         QDialog.__init__(self, parent)
         self.db = db
 
-        self.setWindowTitle(_('Check Library -- Problems Found'))
+        self.setWindowTitle(_('Check library -- Problems found'))
         self.setWindowIcon(QIcon(I('debug.png')))
 
         self._tl = QHBoxLayout()
@@ -322,8 +324,7 @@ class CheckLibraryDialog(QDialog):
 
     def delete_marked(self):
         if not confirm('<p>'+_('The marked files and folders will be '
-               '<b>permanently deleted</b>. Are you sure?')
-               +'</p>', 'check_library_editor_delete', self):
+               '<b>permanently deleted</b>. Are you sure?') + '</p>', 'check_library_editor_delete', self):
             return
 
         # Sort the paths in reverse length order so that we can be sure that
@@ -394,4 +395,3 @@ if __name__ == '__main__':
     from calibre.library import db
     d = CheckLibraryDialog(None, db())
     d.exec_()
-

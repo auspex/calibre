@@ -6,44 +6,55 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import httplib, base64, urllib2, subprocess, os, cookielib
+import httplib, base64, urllib2, subprocess, os, cookielib, time
+from collections import namedtuple
 try:
     from distutils.spawn import find_executable
 except ImportError:  # windows
     find_executable = lambda x: None
 
+from calibre.ptempfile import TemporaryDirectory
+from calibre.srv.errors import HTTPForbidden
 from calibre.srv.tests.base import BaseTest, TestServer
 from calibre.srv.routes import endpoint, Router
 
 REALM = 'calibre-test'
 
+
 @endpoint('/open', auth_required=False)
 def noauth(ctx, data):
     return 'open'
+
 
 @endpoint('/closed', auth_required=True)
 def auth(ctx, data):
     return 'closed'
 
+
 @endpoint('/android', auth_required=True, android_workaround=True)
 def android(ctx, data):
     return 'android'
+
 
 @endpoint('/android2', auth_required=True, android_workaround=True)
 def android2(ctx, data):
     return 'android2'
 
-def router(prefer_basic_auth=False):
+
+def router(prefer_basic_auth=False, ban_for=0, ban_after=5):
     from calibre.srv.auth import AuthController
     return Router(globals().itervalues(), auth_controller=AuthController(
         {'testuser':'testpw', '!@#$%^&*()-=_+':'!@#$%^&*()-=_+'},
+        ban_time_in_minutes=ban_for, ban_after=ban_after,
         prefer_basic_auth=prefer_basic_auth, realm=REALM, max_age_seconds=1))
+
 
 def urlopen(server, path='/closed', un='testuser', pw='testpw', method='digest'):
     auth_handler = urllib2.HTTPBasicAuthHandler() if method == 'basic' else urllib2.HTTPDigestAuthHandler()
     url = 'http://localhost:%d%s' % (server.address[1], path)
     auth_handler.add_password(realm=REALM, uri=url, user=un, passwd=pw)
     return urllib2.build_opener(auth_handler).open(url)
+
 
 def digest(un, pw, nonce=None, uri=None, method='GET', nc=1, qop='auth', realm=REALM, cnonce=None, algorithm='MD5', body=b'', modify=lambda x:None):
     'Create the payload for a digest based Authorization header'
@@ -54,14 +65,18 @@ def digest(un, pw, nonce=None, uri=None, method='GET', nc=1, qop='auth', realm=R
     da = DigestAuth(h)
     modify(da)
     pw = getattr(da, 'pw', pw)
+
     class Data(object):
+
         def __init__(self):
             self.method = method
-        def peek():
+
+        def peek(self):
             return body
     response = da.request_digest(pw, Data())
     return ('Digest ' + templ.format(
         un=un, realm=realm, qop=qop, uri=uri, method=method, nonce=nonce, nc=nc, cnonce=cnonce, algorithm=algorithm, response=response)).encode('ascii')
+
 
 class TestAuth(BaseTest):
 
@@ -97,9 +112,50 @@ class TestAuth(BaseTest):
             server.loop.log.warn = lambda *args, **kwargs: warnings.append(' '.join(args))
             self.ae((httplib.OK, b'closed'), request())
             self.ae((httplib.UNAUTHORIZED, b''), request('x', 'y'))
+            self.ae((httplib.BAD_REQUEST, b'The username or password was empty'), request('', ''))
             self.ae(1, len(warnings))
             self.ae((httplib.UNAUTHORIZED, b''), request('testuser', 'y'))
+            self.ae((httplib.BAD_REQUEST, b'The username or password was empty'), request('testuser', ''))
+            self.ae((httplib.BAD_REQUEST, b'The username or password was empty'), request(''))
             self.ae((httplib.UNAUTHORIZED, b''), request('asf', 'testpw'))
+    # }}}
+
+    def test_library_restrictions(self):  # {{{
+        from calibre.srv.opts import Options
+        from calibre.srv.handler import Handler
+        from calibre.db.legacy import create_backend
+        opts = Options(userdb=':memory:')
+        Data = namedtuple('Data', 'username')
+        with TemporaryDirectory() as base:
+            l1, l2, l3 = map(lambda x: os.path.join(base, 'l' + x), '123')
+            for l in (l1, l2, l3):
+                create_backend(l).close()
+            ctx = Handler((l1, l2, l3), opts).router.ctx
+            um = ctx.user_manager
+
+            def get_library(username=None, library_id=None):
+                ans = ctx.get_library(Data(username), library_id=library_id)
+                return os.path.basename(ans.backend.library_path)
+
+            def library_info(username=None):
+                lmap, defaultlib = ctx.library_info(Data(username))
+                lmap = {k:os.path.basename(v) for k, v in lmap.iteritems()}
+                return lmap, defaultlib
+
+            self.assertEqual(get_library(), 'l1')
+            self.assertEqual(library_info()[0], {'l%d'%i:'l%d'%i for i in range(1, 4)})
+            self.assertEqual(library_info()[1], 'l1')
+            self.assertRaises(HTTPForbidden, get_library, 'xxx')
+            um.add_user('a', 'a')
+            self.assertEqual(library_info('a')[0], {'l%d'%i:'l%d'%i for i in range(1, 4)})
+            um.update_user_restrictions('a', {'blocked_library_names': ['L2']})
+            self.assertEqual(library_info('a')[0], {'l%d'%i:'l%d'%i for i in range(1, 4) if i != 2})
+            um.update_user_restrictions('a', {'allowed_library_names': ['l3']})
+            self.assertEqual(library_info('a')[0], {'l%d'%i:'l%d'%i for i in range(1, 4) if i == 3})
+            self.assertEqual(library_info('a')[1], 'l3')
+            self.assertRaises(HTTPForbidden, get_library, 'a', 'l1')
+            self.assertRaises(HTTPForbidden, get_library, 'xxx')
+
     # }}}
 
     def test_digest_auth(self):  # {{{
@@ -109,6 +165,7 @@ class TestAuth(BaseTest):
         r = router()
         with TestServer(r.dispatch) as server:
             r.auth_controller.log = server.log
+
             def test(conn, path, headers={}, status=httplib.OK, body=b'', request_body=b''):
                 conn.request('GET', path, request_body, headers)
                 r = conn.getresponse()
@@ -134,6 +191,8 @@ class TestAuth(BaseTest):
             # Check that server ignores repeated nc values
             ok_test(conn, digest(**args))
 
+            warnings = []
+            server.loop.log.warn = lambda *args, **kwargs: warnings.append(' '.join(args))
             # Check stale nonces
             orig, r.auth_controller.max_age_seconds = r.auth_controller.max_age_seconds, -1
             auth = parse_http_dict(test(conn, '/closed', headers={
@@ -160,6 +219,9 @@ class TestAuth(BaseTest):
             # Check that incorrect user/password fails
             fail_test(conn, lambda da:setattr(da, 'pw', '/'))
             fail_test(conn, lambda da:setattr(da, 'username', '/'))
+            fail_test(conn, lambda da:setattr(da, 'username', ''))
+            fail_test(conn, lambda da:setattr(da, 'pw', ''))
+            fail_test(conn, lambda da:(setattr(da, 'pw', ''), setattr(da, 'username', '')))
 
             # Check against python's stdlib
             self.ae(urlopen(server).read(), b'closed')
@@ -177,6 +239,29 @@ class TestAuth(BaseTest):
                 docurl(b'', '--digest', '--user', 'xxxx:testpw')
                 docurl(b'', '--digest', '--user', 'testuser:xtestpw')
                 docurl(b'closed', '--digest', '--user', 'testuser:testpw')
+    # }}}
+
+    def test_fail_ban(self):  # {{{
+        ban_for = 0.5/60.0
+        r = router(prefer_basic_auth=True, ban_for=ban_for, ban_after=2)
+        with TestServer(r.dispatch) as server:
+            r.auth_controller.log = server.log
+            conn = server.connect()
+
+            def request(un='testuser', pw='testpw'):
+                conn.request('GET', '/closed', headers={'Authorization': b'Basic ' + base64.standard_b64encode(bytes('%s:%s' % (un, pw)))})
+                r = conn.getresponse()
+                return r.status, r.read()
+
+            warnings = []
+            server.loop.log.warn = lambda *args, **kwargs: warnings.append(' '.join(args))
+            self.ae((httplib.OK, b'closed'), request())
+            self.ae((httplib.UNAUTHORIZED, b''), request('x', 'y'))
+            self.ae((httplib.UNAUTHORIZED, b''), request('x', 'y'))
+            self.ae(httplib.FORBIDDEN, request('x', 'y')[0])
+            self.ae(httplib.FORBIDDEN, request()[0])
+            time.sleep(ban_for * 60 + 0.01)
+            self.ae((httplib.OK, b'closed'), request())
     # }}}
 
     def test_android_auth_workaround(self):  # {{{

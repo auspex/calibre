@@ -13,19 +13,19 @@ from datetime import date, datetime
 from PyQt5.Qt import (
     Qt, QDateTimeEdit, pyqtSignal, QMessageBox, QIcon, QToolButton, QWidget,
     QLabel, QGridLayout, QApplication, QDoubleSpinBox, QListWidgetItem, QSize,
-    QPixmap, QDialog, QMenu, QSpinBox, QLineEdit, QSizePolicy, QKeySequence,
+    QPixmap, QDialog, QMenu, QLineEdit, QSizePolicy, QKeySequence,
     QDialogButtonBox, QAction, QCalendarWidget, QDate, QDateTime, QUndoCommand,
     QUndoStack, QVBoxLayout, QPlainTextEdit)
 
 from calibre.gui2.widgets import EnLineEdit, FormatList as _FormatList, ImageView
-from calibre.gui2.widgets2 import access_key, populate_standard_spinbox_context_menu, RightClickButton, Dialog
+from calibre.gui2.widgets2 import access_key, populate_standard_spinbox_context_menu, RightClickButton, Dialog, RatingEditor
 from calibre.utils.icu import sort_key
 from calibre.utils.config import tweaks, prefs
 from calibre.ebooks.metadata import (
     title_sort, string_to_authors, check_isbn, authors_to_sort_string)
 from calibre.ebooks.metadata.meta import get_metadata
 from calibre.gui2 import (file_icon_provider, UNDEFINED_QDATETIME,
-        choose_files, error_dialog, choose_images)
+        choose_files, error_dialog, choose_images, gprefs)
 from calibre.gui2.complete2 import EditWithComplete
 from calibre.utils.date import (
     local_tz, qt_to_dt, as_local_time, UNDEFINED_DATE, is_date_undefined,
@@ -45,6 +45,7 @@ OK_COLOR = 'rgba(0, 255, 0, 12%)'
 ERR_COLOR = 'rgba(255, 0, 0, 12%)'
 INDICATOR_SHEET = 'QLineEdit { color: black; background-color: %s }'
 
+
 def save_dialog(parent, title, msg, det_msg=''):
     d = QMessageBox(parent)
     d.setWindowTitle(title)
@@ -52,8 +53,10 @@ def save_dialog(parent, title, msg, det_msg=''):
     d.setStandardButtons(QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
     return d.exec_()
 
+
 def clean_text(x):
     return re.sub(r'\s', ' ', x.strip())
+
 
 '''
 The interface common to all widgets used to set basic metadata
@@ -76,6 +79,7 @@ class BasicMetadataWidget(object):
             pass
         return property(fget=fget, fset=fset)
 '''
+
 
 class ToMetadataMixin(object):
 
@@ -107,6 +111,7 @@ class ToMetadataMixin(object):
                 self.disable_popup = orig
         else:
             self.setEditText(text)
+
 
 def make_undoable(spinbox):
     'Add a proper undo/redo capability to spinbox which must be a sub-class of QAbstractSpinBox'
@@ -181,6 +186,8 @@ def make_undoable(spinbox):
     return UndoableSpinbox
 
 # Title {{{
+
+
 class TitleEdit(EnLineEdit, ToMetadataMixin):
 
     TITLE_ATTR = FIELD_NAME = 'title'
@@ -233,6 +240,7 @@ class TitleEdit(EnLineEdit, ToMetadataMixin):
 
     def break_cycles(self):
         self.dialog = None
+
 
 class TitleSortEdit(TitleEdit, ToMetadataMixin):
 
@@ -314,6 +322,8 @@ class TitleSortEdit(TitleEdit, ToMetadataMixin):
 # }}}
 
 # Authors {{{
+
+
 class AuthorsEdit(EditWithComplete, ToMetadataMixin):
 
     TOOLTIP = ''
@@ -422,6 +432,7 @@ class AuthorsEdit(EditWithComplete, ToMetadataMixin):
         except:
             pass
 
+
 class AuthorSortEdit(EnLineEdit, ToMetadataMixin):
 
     TOOLTIP = _('Specify how the author(s) of this book should be sorted. '
@@ -486,10 +497,13 @@ class AuthorSortEdit(EnLineEdit, ToMetadataMixin):
         self.first_time = False
         self.update_state()
 
+    def author_sort_from_authors(self, authors):
+        return self.db.new_api.author_sort_from_authors(authors, key_func=lambda x: x)
+
     def update_state(self, *args):
         au = unicode(self.authors_edit.text())
         au = re.sub(r'\s+et al\.$', '', au)
-        au = self.db.author_sort_from_authors(string_to_authors(au))
+        au = self.author_sort_from_authors(string_to_authors(au))
 
         normal = au == self.current_val
         col = OK_COLOR if normal else ERR_COLOR
@@ -517,7 +531,7 @@ class AuthorSortEdit(EnLineEdit, ToMetadataMixin):
         au = unicode(self.authors_edit.text())
         au = re.sub(r'\s+et al\.$', '', au).strip()
         authors = string_to_authors(au)
-        self.current_val = self.db.author_sort_from_authors(authors)
+        self.current_val = self.author_sort_from_authors(authors)
 
     def author_to_sort(self, *args):
         au = unicode(self.authors_edit.text())
@@ -568,6 +582,8 @@ class AuthorSortEdit(EnLineEdit, ToMetadataMixin):
 # }}}
 
 # Series {{{
+
+
 class SeriesEdit(EditWithComplete, ToMetadataMixin):
 
     TOOLTIP = _('List of known series. You can add new series.')
@@ -704,6 +720,7 @@ class SeriesIndexEdit(make_undoable(QDoubleSpinBox), ToMetadataMixin):
 
 # }}}
 
+
 class BuddyLabel(QLabel):  # {{{
 
     def __init__(self, buddy):
@@ -713,6 +730,7 @@ class BuddyLabel(QLabel):  # {{{
 # }}}
 
 # Formats {{{
+
 
 class Format(QListWidgetItem):
 
@@ -730,6 +748,7 @@ class Format(QListWidgetItem):
             self.setToolTip(text)
             self.setStatusTip(text)
 
+
 class OrigAction(QAction):
 
     restore_fmt = pyqtSignal(object)
@@ -741,6 +760,7 @@ class OrigAction(QAction):
 
     def _triggered(self):
         self.restore_fmt.emit(self.fmt)
+
 
 class FormatList(_FormatList):
 
@@ -770,6 +790,7 @@ class FormatList(_FormatList):
                 self.takeItem(i)
                 break
 
+
 class FormatsManager(QWidget):
 
     def __init__(self, parent, copy_fmt):
@@ -783,7 +804,7 @@ class FormatsManager(QWidget):
         self.cover_from_format_button = QToolButton(self)
         self.cover_from_format_button.setToolTip(
                 _('Set the cover for the book from the selected format'))
-        self.cover_from_format_button.setIcon(QIcon(I('book.png')))
+        self.cover_from_format_button.setIcon(QIcon(I('default_cover.png')))
         self.cover_from_format_button.setIconSize(QSize(32, 32))
 
         self.metadata_from_format_button = QToolButton(self)
@@ -1005,6 +1026,7 @@ class FormatsManager(QWidget):
         self.temp_files = []
 # }}}
 
+
 class Cover(ImageView):  # {{{
 
     download_cover = pyqtSignal()
@@ -1029,7 +1051,7 @@ class Cover(ImageView):  # {{{
                     self.clicked.connect(action)
 
         self.select_cover_button = CB(_('&Browse'), 'document_open.png', self.select_cover)
-        self.trim_cover_button = b = CB(_('T&rim borders'), 'trim.png')
+        self.trim_cover_button = b = CB(_('Trim bord&ers'), 'trim.png')
         b.setToolTip(_(
             'Automatically detect and remove extra space at the cover\'s edges.\n'
             'Pressing it repeatedly can sometimes remove stubborn borders.'))
@@ -1071,8 +1093,7 @@ class Cover(ImageView):  # {{{
 
     def select_cover(self, *args):
         files = choose_images(
-            self, 'change cover dialog', _('Choose cover for ') + self.dialog.title.current_val,
-            formats=('png', 'gif', 'jpg', 'jpeg'))
+            self, 'change cover dialog', _('Choose cover for ') + self.dialog.title.current_val)
         if not files:
             return
         _file = files[0]
@@ -1108,9 +1129,9 @@ class Cover(ImageView):  # {{{
         cdata = self.current_val
         if not cdata:
             return
-        from calibre.utils.img import remove_borders, image_to_data, image_from_data
+        from calibre.utils.img import remove_borders_from_image, image_to_data, image_from_data
         img = image_from_data(cdata)
-        nimg = remove_borders(img)
+        nimg = remove_borders_from_image(img)
         if nimg is not img:
             self.cdata_before_trim = cdata
             self.current_val = image_to_data(nimg, fmt='png')
@@ -1162,6 +1183,7 @@ class Cover(ImageView):  # {{{
     def current_val(self):
         def fget(self):
             return self._cdata
+
         def fset(self, cdata):
             self._cdata = None
             self.cdata_before_trim = None
@@ -1172,6 +1194,7 @@ class Cover(ImageView):  # {{{
                 pm = QPixmap(I('default_cover.png'))
             else:
                 self._cdata = cdata
+            pm.setDevicePixelRatio(getattr(self, 'devicePixelRatioF', self.devicePixelRatio)())
             self.setPixmap(pm)
             tt = _('This book has no cover')
             if self._cdata:
@@ -1203,6 +1226,7 @@ class Cover(ImageView):  # {{{
 
 # }}}
 
+
 class CommentsEdit(Editor, ToMetadataMixin):  # {{{
 
     FIELD_NAME = 'comments'
@@ -1212,6 +1236,7 @@ class CommentsEdit(Editor, ToMetadataMixin):  # {{{
     def current_val(self):
         def fget(self):
             return self.html
+
         def fset(self, val):
             if not val or not val.strip():
                 val = ''
@@ -1231,7 +1256,8 @@ class CommentsEdit(Editor, ToMetadataMixin):  # {{{
             db.set_comment(id_, self.current_val, notify=False, commit=False)
 # }}}
 
-class RatingEdit(make_undoable(QSpinBox), ToMetadataMixin):  # {{{
+
+class RatingEdit(RatingEditor, ToMetadataMixin):  # {{{
     LABEL = _('&Rating:')
     TOOLTIP = _('Rating of this book. 0-5 stars')
     FIELD_NAME = 'rating'
@@ -1240,42 +1266,30 @@ class RatingEdit(make_undoable(QSpinBox), ToMetadataMixin):  # {{{
         super(RatingEdit, self).__init__(parent)
         self.setToolTip(self.TOOLTIP)
         self.setWhatsThis(self.TOOLTIP)
-        self.setMaximum(5)
-        self.setSuffix(' ' + _('stars'))
-        self.setSpecialValueText(_('Not rated'))
 
     @dynamic_property
     def current_val(self):
         def fget(self):
-            return self.value()
+            return self.rating_value
+
         def fset(self, val):
-            if val is None:
-                val = 0
-            val = int(val)
-            if val < 0:
-                val = 0
-            if val > 5:
-                val = 5
-            self.set_spinbox_value(val)
+            self.rating_value = val
         return property(fget=fget, fset=fset)
 
     def initialize(self, db, id_):
         val = db.rating(id_, index_is_id=True)
-        if val > 0:
-            val = int(val/2.)
-        else:
-            val = 0
         self.current_val = val
         self.original_val = self.current_val
 
     def commit(self, db, id_):
-        db.set_rating(id_, 2*self.current_val, notify=False, commit=False)
+        db.set_rating(id_, self.current_val, notify=False, commit=False)
         return True
 
     def zero(self):
-        self.setValue(0)
+        self.setCurrentIndex(0)
 
 # }}}
+
 
 class TagsEdit(EditWithComplete, ToMetadataMixin):  # {{{
     LABEL = _('Ta&gs:')
@@ -1286,6 +1300,7 @@ class TagsEdit(EditWithComplete, ToMetadataMixin):  # {{{
 
     def __init__(self, parent):
         EditWithComplete.__init__(self, parent)
+        self.lineEdit().setMaxLength(655360)  # see https://bugs.launchpad.net/bugs/1630944
         self.books_to_refresh = set([])
         self.setToolTip(self.TOOLTIP)
         self.setWhatsThis(self.TOOLTIP)
@@ -1294,6 +1309,7 @@ class TagsEdit(EditWithComplete, ToMetadataMixin):  # {{{
     def current_val(self):
         def fget(self):
             return [clean_text(x) for x in unicode(self.text()).split(',')]
+
         def fset(self, val):
             if not val:
                 val = []
@@ -1340,6 +1356,7 @@ class TagsEdit(EditWithComplete, ToMetadataMixin):  # {{{
 
 # }}}
 
+
 class LanguagesEdit(LE, ToMetadataMixin):  # {{{
 
     LABEL = _('&Languages:')
@@ -1354,6 +1371,7 @@ class LanguagesEdit(LE, ToMetadataMixin):  # {{{
     def current_val(self):
         def fget(self):
             return self.lang_codes
+
         def fset(self, val):
             self.set_lang_codes(val, self.allow_undo)
         return property(fget=fget, fset=fset)
@@ -1378,9 +1396,11 @@ class LanguagesEdit(LE, ToMetadataMixin):  # {{{
         cv = self.current_val
         if cv != self.original_val:
             db.set_languages(id_, cv)
+        self.update_recently_used()
 # }}}
 
 # Identifiers {{{
+
 
 class Identifiers(Dialog):
 
@@ -1427,8 +1447,9 @@ class Identifiers(Dialog):
             return
         Dialog.accept(self)
 
+
 class IdentifiersEdit(QLineEdit, ToMetadataMixin):
-    LABEL = _('I&ds:')
+    LABEL = _('&Ids:')
     BASE_TT = _('Edit the identifiers for this book. '
             'For example: \n\n%s')%(
             'isbn:1565927249, doi:10.1000/182, amazon:1565927249')
@@ -1469,9 +1490,11 @@ class IdentifiersEdit(QLineEdit, ToMetadataMixin):
                             c = v
                     ans[itype] = c
             return ans
+
         def fset(self, val):
             if not val:
                 val = {}
+
             def keygen(x):
                 x = x[0]
                 if x == 'isbn':
@@ -1506,12 +1529,29 @@ class IdentifiersEdit(QLineEdit, ToMetadataMixin):
             col = 'none'
         elif check_isbn(isbn) is not None:
             col = OK_COLOR
-            extra = '\n\n'+_('This ISBN number is valid')
+            extra = '\n\n'+_('This ISBN is valid')
         else:
             col = ERR_COLOR
-            extra = '\n\n' + _('This ISBN number is invalid')
+            extra = '\n\n' + _('This ISBN is invalid')
         self.setToolTip(tt+extra)
         self.setStyleSheet(INDICATOR_SHEET % col)
+
+    def paste_identifier(self):
+        try:
+            prefix = gprefs['paste_isbn_prefixes'][0]
+        except IndexError:
+            prefix = 'isbn'
+        self.paste_prefix(prefix)
+
+    def paste_prefix(self, prefix):
+        if prefix == 'isbn':
+            self.paste_isbn()
+        else:
+            text = unicode(QApplication.clipboard().text()).strip()
+            if text:
+                vals = self.current_val
+                vals[prefix] = text
+                self.current_val = vals
 
     def paste_isbn(self):
         text = unicode(QApplication.clipboard().text()).strip()
@@ -1522,11 +1562,14 @@ class IdentifiersEdit(QLineEdit, ToMetadataMixin):
             text = d.text()
             if not text:
                 return
-        vals = self.current_val
-        vals['isbn'] = text
-        self.current_val = vals
+        text = check_isbn(text)
+        if text:
+            vals = self.current_val
+            vals['isbn'] = text
+            self.current_val = vals
 
 # }}}
+
 
 class ISBNDialog(QDialog):  # {{{
 
@@ -1568,10 +1611,10 @@ class ISBNDialog(QDialog):  # {{{
             extra = ''
         elif check_isbn(isbn) is not None:
             col = OK_COLOR
-            extra = _('This ISBN number is valid')
+            extra = _('This ISBN is valid')
         else:
             col = ERR_COLOR
-            extra = _('This ISBN number is invalid')
+            extra = _('This ISBN is invalid')
         self.line_edit.setToolTip(extra)
         self.line_edit.setStyleSheet(INDICATOR_SHEET % col)
 
@@ -1579,6 +1622,7 @@ class ISBNDialog(QDialog):  # {{{
         return check_isbn(unicode(self.line_edit.text()))
 
 # }}}
+
 
 class PublisherEdit(EditWithComplete, ToMetadataMixin):  # {{{
     LABEL = _('&Publisher:')
@@ -1631,11 +1675,13 @@ class PublisherEdit(EditWithComplete, ToMetadataMixin):  # {{{
 
 # DateEdit {{{
 
+
 class CalendarWidget(QCalendarWidget):
 
     def showEvent(self, ev):
         if self.selectedDate().year() == UNDEFINED_DATE.year:
             self.setSelectedDate(QDate.currentDate())
+
 
 class DateEdit(make_undoable(QDateTimeEdit), ToMetadataMixin):
 
@@ -1672,6 +1718,7 @@ class DateEdit(make_undoable(QDateTimeEdit), ToMetadataMixin):
     def current_val(self):
         def fget(self):
             return qt_to_dt(self.dateTime(), as_utc=False)
+
         def fset(self, val):
             if val is None or is_date_undefined(val):
                 val = UNDEFINED_DATE
@@ -1702,11 +1749,16 @@ class DateEdit(make_undoable(QDateTimeEdit), ToMetadataMixin):
         elif ev.key() == Qt.Key_Equal:
             ev.accept()
             self.setDateTime(QDateTime.currentDateTime())
+        elif ev.key() == Qt.Key_Up and is_date_undefined(self.current_val):
+            self.setDateTime(QDateTime.currentDateTime())
+        elif ev.key() == Qt.Key_Tab and is_date_undefined(self.current_val):
+            ev.ignore()
         else:
             return super(DateEdit, self).keyPressEvent(ev)
 
+
 class PubdateEdit(DateEdit):
-    LABEL = _('Publishe&d:')
+    LABEL = _('P&ublished:')
     FMT = 'MMM yyyy'
     ATTR = FIELD_NAME = 'pubdate'
     TWEAK = 'gui_pubdate_display_format'

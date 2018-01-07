@@ -18,11 +18,13 @@ from calibre.gui2.tweak_book import current_container, set_current_container, ed
 from calibre.gui2.tweak_book.boss import get_boss
 from calibre.gui2.tweak_book.widgets import Dialog
 
+
 def get_data(name):
     'Get the data for name. Returns a unicode string if name is a text document/stylesheet'
     if name in editors:
         return editors[name].get_raw_data()
     return current_container().raw_data(name)
+
 
 def set_data(name, val):
     if name in editors:
@@ -31,6 +33,7 @@ def set_data(name, val):
         with current_container().open(name, 'wb') as f:
             f.write(val)
     get_boss().set_modified()
+
 
 class CheckExternalLinks(Dialog):
 
@@ -102,7 +105,7 @@ class CheckExternalLinks(Dialog):
             self.rb.setEnabled(True)
             if self.tb is not None:
                 return error_dialog(self, _('Checking failed'), _(
-                    'There was an error while checking links, click "Show Details" for more information'),
+                    'There was an error while checking links, click "Show details" for more information'),
                              det_msg=self.tb, show=True)
             if not self.errors:
                 self.results.setText(_('No broken links found'))
@@ -112,7 +115,9 @@ class CheckExternalLinks(Dialog):
             self.pb.setMaximum(total), self.pb.setValue(curr)
 
     def populate_results(self, preserve_pos=False):
-        text = '<h3>%s</h3><ol>' % (_('Found %d broken links') % (len(self.errors) - len(self.fixed_errors)))
+        num = len(self.errors) - len(self.fixed_errors)
+        text = '<h3>%s</h3><ol>' % (ngettext(
+            'Found a broken link', 'Found {} broken links', num).format(num))
         for i, (locations, err, url) in enumerate(self.errors):
             if i in self.fixed_errors:
                 continue

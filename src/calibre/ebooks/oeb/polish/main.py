@@ -7,13 +7,13 @@ __license__   = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import re, sys, os, time
+import re, sys, time
 from collections import namedtuple
 from functools import partial
 
 from calibre.ebooks.oeb.polish.container import get_container
 from calibre.ebooks.oeb.polish.stats import StatsCollector
-from calibre.ebooks.oeb.polish.subset import subset_all_fonts
+from calibre.ebooks.oeb.polish.subset import subset_all_fonts, iter_subsettable_fonts
 from calibre.ebooks.oeb.polish.images import compress_images
 from calibre.ebooks.oeb.polish.embed import embed_all_fonts
 from calibre.ebooks.oeb.polish.cover import set_cover
@@ -37,6 +37,7 @@ ALL_OPTS = {
 
 CUSTOMIZATION = {
     'remove_unused_classes': False,
+    'merge_identical_selectors': False,
 }
 
 SUPPORTED = {'EPUB', 'AZW3'}
@@ -45,14 +46,14 @@ SUPPORTED = {'EPUB', 'AZW3'}
 HELP = {'about': _(
 '''\
 <p><i>Polishing books</i> is all about putting the shine of perfection onto
-your carefully crafted ebooks.</p>
+your carefully crafted e-books.</p>
 
-<p>Polishing tries to minimize the changes to the internal code of your ebook.
+<p>Polishing tries to minimize the changes to the internal code of your e-book.
 Unlike conversion, it <i>does not</i> flatten CSS, rename files, change font
 sizes, adjust margins, etc. Every action performs only the minimum set of
 changes needed for the desired effect.</p>
 
-<p>You should use this tool as the last step in your ebook creation process.</p>
+<p>You should use this tool as the last step in your e-book creation process.</p>
 {0}
 <p>Note that polishing only works on files in the %s formats.</p>\
 ''')%_(' or ').join(sorted('<b>%s</b>'%x for x in SUPPORTED)),
@@ -113,6 +114,7 @@ affecting image quality.</p>
 
 }
 
+
 def hfix(name, raw):
     if name == 'about':
         return raw.format('')
@@ -122,32 +124,33 @@ def hfix(name, raw):
     raw = raw.replace('&lt;', '<').replace('&gt;', '>')
     return raw
 
+
 CLI_HELP = {x:hfix(x, re.sub('<.*?>', '', y)) for x, y in HELP.iteritems()}
 # }}}
 
-def update_metadata(ebook, new_opf):
-    from calibre.ebooks.metadata.opf2 import OPF
-    from calibre.ebooks.metadata.epub import update_metadata
-    opfpath = ebook.name_to_abspath(ebook.opf_name)
-    with ebook.open(ebook.opf_name, 'r+b') as stream, open(new_opf, 'rb') as ns:
-        opf = OPF(stream, basedir=os.path.dirname(opfpath), populate_spine=False,
-                  unquote_urls=False)
-        mi = OPF(ns, unquote_urls=False,
-                      populate_spine=False).to_book_metadata()
-        mi.cover, mi.cover_data = None, (None, None)
 
-        update_metadata(opf, mi, apply_null=True, update_timestamp=True)
+def update_metadata(ebook, new_opf):
+    from calibre.ebooks.metadata.opf import get_metadata, set_metadata
+    with ebook.open(ebook.opf_name, 'r+b') as stream, open(new_opf, 'rb') as ns:
+        mi = get_metadata(ns)[0]
+        mi.cover, mi.cover_data = None, (None, None)
+        opfbytes = set_metadata(stream, mi, apply_null=True, update_timestamp=True)[0]
         stream.seek(0)
         stream.truncate()
-        stream.write(opf.render())
+        stream.write(opfbytes)
+
 
 def polish_one(ebook, opts, report, customization=None):
     rt = lambda x: report('\n### ' + x)
     jacket = None
     changed = False
     customization = customization or CUSTOMIZATION.copy()
+    has_subsettable_fonts = False
+    for x in iter_subsettable_fonts(ebook):
+        has_subsettable_fonts = True
+        break
 
-    if opts.subset or opts.embed:
+    if (opts.subset and has_subsettable_fonts) or opts.embed:
         stats = StatsCollector(ebook, do_embed=opts.embed)
 
     if opts.opf:
@@ -197,17 +200,22 @@ def polish_one(ebook, opts, report, customization=None):
         rt(_('Embedding referenced fonts'))
         if embed_all_fonts(ebook, stats, report):
             changed = True
+            has_subsettable_fonts = True
         report('')
 
     if opts.subset:
-        rt(_('Subsetting embedded fonts'))
-        if subset_all_fonts(ebook, stats.font_stats, report):
-            changed = True
+        if has_subsettable_fonts:
+            rt(_('Subsetting embedded fonts'))
+            if subset_all_fonts(ebook, stats.font_stats, report):
+                changed = True
+        else:
+            rt(_('No embedded fonts to subset'))
         report('')
 
     if opts.remove_unused_css:
         rt(_('Removing unused CSS rules'))
-        if remove_unused_css(ebook, report, remove_unused_classes=customization['remove_unused_classes']):
+        if remove_unused_css(
+                ebook, report, remove_unused_classes=customization['remove_unused_classes'], merge_rules=customization['merge_identical_selectors']):
             changed = True
         report('')
 
@@ -230,7 +238,9 @@ def polish(file_map, opts, log, report):
         report('-'*70)
     report(_('Polishing took: %.1f seconds')%(time.time()-st))
 
+
 REPORT = '{0} REPORT {0}'.format('-'*30)
+
 
 def gui_polish(data):
     files = data.pop('files')
@@ -252,6 +262,7 @@ def gui_polish(data):
         log(msg)
     return '\n\n'.join(report)
 
+
 def tweak_polish(container, actions, customization=None):
     opts = ALL_OPTS.copy()
     opts.update(actions)
@@ -260,6 +271,7 @@ def tweak_polish(container, actions, customization=None):
     report = []
     changed = polish_one(container, opts, report.append, customization=customization)
     return report, changed
+
 
 def option_parser():
     from calibre.utils.config import OptionParser
@@ -271,7 +283,7 @@ def option_parser():
     o('--embed-fonts', '-e', dest='embed', help=CLI_HELP['embed'])
     o('--subset-fonts', '-f', dest='subset', help=CLI_HELP['subset'])
     a('--cover', '-c', help=_(
-        'Path to a cover image. Changes the cover specified in the ebook. '
+        'Path to a cover image. Changes the cover specified in the e-book. '
         'If no cover is present, or the cover is not properly identified, inserts a new cover.'))
     a('--opf', '-o', help=_(
         'Path to an OPF file. The metadata in the book is updated from the OPF file.'))
@@ -284,6 +296,7 @@ def option_parser():
     o('--verbose', help=_('Produce more verbose output, useful for debugging.'))
 
     return parser
+
 
 def main(args=None):
     parser = option_parser()
@@ -324,6 +337,6 @@ def main(args=None):
 
     log('Output written to:', outbook)
 
+
 if __name__ == '__main__':
     main()
-

@@ -110,6 +110,7 @@ MIBNUM_TO_NAME = {
     2258: 'cp1258',
 }
 
+
 class HeaderRecord(object):
     '''
     Plucker header. PDB record 0.
@@ -245,7 +246,7 @@ class SectionText(object):
 
 class SectionCompositeImage(object):
     '''
-    A composite image consists of a a 2D array
+    A composite image consists of a 2D array
     of rows and columns. The entries in the array
     are uid's.
     '''
@@ -706,7 +707,10 @@ class Reader(FormatReader):
                     offset += 7
                 # Exact link modifier
                 # 2 Bytes
-                # Paragraph Offset (The Exact Link Modifier modifies a Paragraph Link or Targeted Paragraph Link function to specify an exact byte offset within the paragraph. This function must be followed immediately by the function it modifies).
+                # Paragraph Offset (The Exact Link Modifier modifies a Paragraph Link or
+                # Targeted Paragraph Link function to specify an exact byte offset within
+                # the paragraph. This function must be followed immediately by the
+                # function it modifies).
                 elif c == 0x9a:
                     offset += 2
             elif c == 0xa0:

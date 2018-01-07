@@ -13,6 +13,7 @@ import calibre
 from calibre.utils.localization import lang_as_iso639_1
 from calibre.utils.resources import compiled_coffeescript
 
+
 class JavaScriptLoader(object):
 
     JS = {x:('viewer/%s.js'%x if y is None else y) for x, y in {
@@ -20,7 +21,7 @@ class JavaScriptLoader(object):
             'bookmarks':None,
             'referencing':None,
             'hyphenation':None,
-            'jquery':'content_server/jquery.js',
+            'jquery':'viewer/jquery.js',
             'jquery_scrollTo':None,
             'hyphenator':'viewer/hyphenate/Hyphenator.js',
             'images':None

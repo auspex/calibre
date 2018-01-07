@@ -11,6 +11,7 @@ import sys, os
 from calibre.customize.conversion import OutputFormatPlugin
 from calibre.customize.conversion import OptionRecommendation
 
+
 class LRFOptions(object):
 
     def __init__(self, output, opts, oeb):
@@ -73,7 +74,6 @@ class LRFOptions(object):
         self.header_separation = (self.profile.dpi/72.) * opts.header_separation
         self.headerformat = opts.header_format
 
-
         for x in ('top', 'bottom', 'left', 'right'):
             setattr(self, x+'_margin',
                 (self.profile.dpi/72.) * float(getattr(opts, 'margin_'+x)))
@@ -84,6 +84,7 @@ class LRFOptions(object):
                 'text_size_multiplier_for_rendered_tables'):
             setattr(self, x, getattr(opts, x))
 
+
 class LRFOutput(OutputFormatPlugin):
 
     name = 'LRF Output'
@@ -92,7 +93,7 @@ class LRFOutput(OutputFormatPlugin):
 
     options = set([
         OptionRecommendation(name='enable_autorotation', recommended_value=False,
-            help=_('Enable autorotation of images that are wider than the screen width.')
+            help=_('Enable auto-rotation of images that are wider than the screen width.')
         ),
         OptionRecommendation(name='wordspace',
             recommended_value=2.5, level=OptionRecommendation.LOW,
@@ -173,7 +174,6 @@ class LRFOutput(OutputFormatPlugin):
             nroot.add(x.title, x.href)
         self.oeb.toc = nroot
 
-
     def convert(self, oeb, output_path, input_plugin, opts, log):
         self.log, self.opts, self.oeb = log, opts, oeb
 
@@ -194,4 +194,3 @@ class LRFOutput(OutputFormatPlugin):
             opf = [x for x in os.listdir(tdir) if x.endswith('.opf')][0]
             from calibre.ebooks.lrf.html.convert_from import process_file
             process_file(os.path.join(tdir, opf), lrf_opts, self.log)
-

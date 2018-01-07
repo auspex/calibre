@@ -28,6 +28,8 @@ This class manages access to the preference holding the saved search queries.
 It exists to ensure that unicode is used throughout, and also to permit
 adding other fields, such as whether the search is a 'favorite'
 '''
+
+
 class SavedSearchQueries(object):
     queries = {}
     opt_name = ''
@@ -35,18 +37,21 @@ class SavedSearchQueries(object):
     def __init__(self, db, _opt_name):
         self.opt_name = _opt_name
         if db is not None:
-            self.queries = db.prefs.get(self.opt_name, {})
+            db = db.new_api
+            self._db = weakref.ref(db)
+            self.queries = db.pref(self.opt_name, {})
         else:
             self.queries = {}
-        try:
-            self._db = weakref.ref(db)
-        except TypeError:
-            # db could be None
             self._db = lambda : None
 
     @property
     def db(self):
         return self._db()
+
+    def save_queries(self):
+        db = self.db
+        if db is not None:
+            db.set_pref(self.opt_name, self.queries)
 
     def force_unicode(self, x):
         if not isinstance(x, unicode):
@@ -54,35 +59,29 @@ class SavedSearchQueries(object):
         return x
 
     def add(self, name, value):
-        db = self.db
-        if db is not None:
-            self.queries[self.force_unicode(name)] = self.force_unicode(value).strip()
-            db.prefs[self.opt_name] = self.queries
+        self.queries[self.force_unicode(name)] = self.force_unicode(value).strip()
+        self.save_queries()
 
     def lookup(self, name):
         return self.queries.get(self.force_unicode(name), None)
 
     def delete(self, name):
-        db = self.db
-        if db is not None:
-            self.queries.pop(self.force_unicode(name), False)
-            db.prefs[self.opt_name] = self.queries
+        self.queries.pop(self.force_unicode(name), False)
+        self.save_queries()
 
     def rename(self, old_name, new_name):
-        db = self.db
-        if db is not None:
-            self.queries[self.force_unicode(new_name)] = \
-                        self.queries.get(self.force_unicode(old_name), None)
-            self.queries.pop(self.force_unicode(old_name), False)
-            db.prefs[self.opt_name] = self.queries
+        self.queries[self.force_unicode(new_name)] = \
+                    self.queries.get(self.force_unicode(old_name), None)
+        self.queries.pop(self.force_unicode(old_name), False)
+        self.save_queries()
 
     def set_all(self, smap):
-        db = self.db
-        if db is not None:
-            self.queries = db.prefs[self.opt_name] = smap
+        self.queries = smap
+        self.save_queries()
 
     def names(self):
         return sorted(self.queries.keys(),key=sort_key)
+
 
 '''
 Create a global instance of the saved searches. It is global so that the searches
@@ -90,16 +89,20 @@ are common across all instances of the parser (devices, library, etc).
 '''
 ss = SavedSearchQueries(None, None)
 
+
 def set_saved_searches(db, opt_name):
     global ss
     ss = SavedSearchQueries(db, opt_name)
+
 
 def saved_searches():
     global ss
     return ss
 
+
 def global_lookup_saved_search(name):
     return ss.lookup(name)
+
 
 '''
 Parse a search expression into a series of potentially recursive operations.
@@ -127,138 +130,141 @@ location_expression ::= base_token | ( '(' or_expression ')' )
 
 base_token ::= a sequence of letters and colons, perhaps quoted
 '''
+
+
 class Parser(object):
 
-        def __init__(self):
-            self.current_token = 0
-            self.tokens = None
+    def __init__(self):
+        self.current_token = 0
+        self.tokens = None
 
-        OPCODE = 1
-        WORD = 2
-        QUOTED_WORD = 3
-        EOF = 4
+    OPCODE = 1
+    WORD = 2
+    QUOTED_WORD = 3
+    EOF = 4
 
-        # Had to translate named constants to numeric values
-        lex_scanner = re.Scanner([
-                (r'[()]',             lambda x,t: (1, t)),
-                (r'@.+?:[^")\s]+',    lambda x,t: (2, unicode(t))),
-                (r'[^"()\s]+',        lambda x,t: (2, unicode(t))),
-                (r'".*?((?<!\\)")',   lambda x,t: (3, t[1:-1])),
-                (r'\s+',              None)
-        ], flags=re.DOTALL)
+    # Had to translate named constants to numeric values
+    lex_scanner = re.Scanner([
+            (r'[()]', lambda x,t: (1, t)),
+            (r'@.+?:[^")\s]+', lambda x,t: (2, unicode(t))),
+            (r'[^"()\s]+', lambda x,t: (2, unicode(t))),
+            (r'".*?((?<!\\)")', lambda x,t: (3, t[1:-1])),
+            (r'\s+',              None)
+    ], flags=re.DOTALL)
 
-        def token(self, advance=False):
-            if self.is_eof():
-                return None
-            res = self.tokens[self.current_token][1]
-            if advance:
-                self.current_token += 1
-            return res
-
-        def lcase_token(self, advance=False):
-            if self.is_eof():
-                return None
-            res = self.tokens[self.current_token][1]
-            if advance:
-                self.current_token += 1
-            return icu_lower(res)
-
-        def token_type(self):
-            if self.is_eof():
-                return self.EOF
-            return self.tokens[self.current_token][0]
-
-        def is_eof(self):
-            return self.current_token >= len(self.tokens)
-
-        def advance(self):
+    def token(self, advance=False):
+        if self.is_eof():
+            return None
+        res = self.tokens[self.current_token][1]
+        if advance:
             self.current_token += 1
+        return res
 
-        def parse(self, expr, locations):
-            self.locations = locations
+    def lcase_token(self, advance=False):
+        if self.is_eof():
+            return None
+        res = self.tokens[self.current_token][1]
+        if advance:
+            self.current_token += 1
+        return icu_lower(res)
 
-            # Strip out escaped backslashes, quotes and parens so that the
-            # lex scanner doesn't get confused. We put them back later.
-            expr = expr.replace(u'\\\\', u'\x01').replace(u'\\"', u'\x02')
-            expr = expr.replace(u'\\(', u'\x03').replace(u'\\)', u'\x04')
-            self.tokens = self.lex_scanner.scan(expr)[0]
-            for (i,tok) in enumerate(self.tokens):
-                tt, tv = tok
-                if tt == self.WORD or tt == self.QUOTED_WORD:
-                    self.tokens[i] = (tt,
-                        tv.replace(u'\x01', u'\\').replace(u'\x02', u'"').
-                        replace(u'\x03', u'(').replace(u'\x04', u')'))
+    def token_type(self):
+        if self.is_eof():
+            return self.EOF
+        return self.tokens[self.current_token][0]
 
-            self.current_token = 0
-            prog = self.or_expression()
-            if not self.is_eof():
-                raise ParseException(_('Extra characters at end of search'))
-            #prints(self.tokens, '\n', prog)
-            return prog
+    def is_eof(self):
+        return self.current_token >= len(self.tokens)
 
-        def or_expression(self):
-            lhs = self.and_expression()
-            if self.lcase_token() == 'or':
-                self.advance()
-                return ['or', lhs, self.or_expression()]
-            return lhs
+    def advance(self):
+        self.current_token += 1
 
-        def and_expression(self):
-            lhs = self.not_expression()
-            if self.lcase_token() == 'and':
-                self.advance()
-                return ['and', lhs, self.and_expression()]
+    def parse(self, expr, locations):
+        self.locations = locations
 
-            # Account for the optional 'and'
-            if (self.token_type() in [self.WORD, self.QUOTED_WORD] and
-                            self.lcase_token() != 'or'):
-                return ['and', lhs, self.and_expression()]
-            return lhs
+        # Strip out escaped backslashes, quotes and parens so that the
+        # lex scanner doesn't get confused. We put them back later.
+        expr = expr.replace(u'\\\\', u'\x01').replace(u'\\"', u'\x02')
+        expr = expr.replace(u'\\(', u'\x03').replace(u'\\)', u'\x04')
+        self.tokens = self.lex_scanner.scan(expr)[0]
+        for (i,tok) in enumerate(self.tokens):
+            tt, tv = tok
+            if tt == self.WORD or tt == self.QUOTED_WORD:
+                self.tokens[i] = (tt,
+                    tv.replace(u'\x01', u'\\').replace(u'\x02', u'"').
+                    replace(u'\x03', u'(').replace(u'\x04', u')'))
 
-        def not_expression(self):
-            if self.lcase_token() == 'not':
-                self.advance()
-                return ['not', self.not_expression()]
-            return self.location_expression()
+        self.current_token = 0
+        prog = self.or_expression()
+        if not self.is_eof():
+            raise ParseException(_('Extra characters at end of search'))
+        # prints(self.tokens, '\n', prog)
+        return prog
 
-        def location_expression(self):
-            if self.token_type() == self.OPCODE and self.token() == '(':
-                self.advance()
-                res = self.or_expression()
-                if self.token_type() != self.OPCODE or self.token(advance=True) != ')':
-                    raise ParseException(_('missing )'))
-                return res
-            if self.token_type() not in (self.WORD, self.QUOTED_WORD):
-                raise ParseException(_('Invalid syntax. Expected a lookup name or a word'))
+    def or_expression(self):
+        lhs = self.and_expression()
+        if self.lcase_token() == 'or':
+            self.advance()
+            return ['or', lhs, self.or_expression()]
+        return lhs
 
-            return self.base_token()
+    def and_expression(self):
+        lhs = self.not_expression()
+        if self.lcase_token() == 'and':
+            self.advance()
+            return ['and', lhs, self.and_expression()]
 
-        def base_token(self):
-            if self.token_type() == self.QUOTED_WORD:
-                return ['token', 'all', self.token(advance=True)]
+        # Account for the optional 'and'
+        if (self.token_type() in [self.WORD, self.QUOTED_WORD] and
+                        self.lcase_token() != 'or'):
+            return ['and', lhs, self.and_expression()]
+        return lhs
 
-            words = self.token(advance=True).split(':')
+    def not_expression(self):
+        if self.lcase_token() == 'not':
+            self.advance()
+            return ['not', self.not_expression()]
+        return self.location_expression()
 
-            # The complexity here comes from having colon-separated search
-            # values. That forces us to check that the first "word" in a colon-
-            # separated group is a valid location. If not, then the token must
-            # be reconstructed. We also have the problem that locations can be
-            # followed by quoted strings that appear as the next token. and that
-            # tokens can be a sequence of colons.
+    def location_expression(self):
+        if self.token_type() == self.OPCODE and self.token() == '(':
+            self.advance()
+            res = self.or_expression()
+            if self.token_type() != self.OPCODE or self.token(advance=True) != ')':
+                raise ParseException(_('missing )'))
+            return res
+        if self.token_type() not in (self.WORD, self.QUOTED_WORD):
+            raise ParseException(_('Invalid syntax. Expected a lookup name or a word'))
 
-            # We have a location if there is more than one word and the first
-            # word is in locations. This check could produce a "wrong" answer if
-            # the search string is something like 'author: "foo"' because it
-            # will be interpreted as 'author:"foo"'. I am choosing to accept the
-            # possible error. The expression should be written '"author:" foo'
-            if len(words) > 1 and words[0].lower() in self.locations:
-                loc = words[0].lower()
-                words = words[1:]
-                if len(words) == 1 and self.token_type() == self.QUOTED_WORD:
-                    return ['token', loc, self.token(advance=True)]
-                return ['token', icu_lower(loc), ':'.join(words)]
+        return self.base_token()
 
-            return ['token', 'all', ':'.join(words)]
+    def base_token(self):
+        if self.token_type() == self.QUOTED_WORD:
+            return ['token', 'all', self.token(advance=True)]
+
+        words = self.token(advance=True).split(':')
+
+        # The complexity here comes from having colon-separated search
+        # values. That forces us to check that the first "word" in a colon-
+        # separated group is a valid location. If not, then the token must
+        # be reconstructed. We also have the problem that locations can be
+        # followed by quoted strings that appear as the next token. and that
+        # tokens can be a sequence of colons.
+
+        # We have a location if there is more than one word and the first
+        # word is in locations. This check could produce a "wrong" answer if
+        # the search string is something like 'author: "foo"' because it
+        # will be interpreted as 'author:"foo"'. I am choosing to accept the
+        # possible error. The expression should be written '"author:" foo'
+        if len(words) > 1 and words[0].lower() in self.locations:
+            loc = words[0].lower()
+            words = words[1:]
+            if len(words) == 1 and self.token_type() == self.QUOTED_WORD:
+                return ['token', loc, self.token(advance=True)]
+            return ['token', icu_lower(loc), ':'.join(words)]
+
+        return ['token', 'all', ':'.join(words)]
+
 
 class ParseException(Exception):
 
@@ -267,6 +273,7 @@ class ParseException(Exception):
         if len(self.args) > 0:
             return self.args[0]
         return ""
+
 
 class SearchQueryParser(object):
     '''
@@ -389,7 +396,10 @@ class SearchQueryParser(object):
                     raise ParseException(_('Recursive saved search: {0}').format(query))
                 if self.recurse_level > 5:
                     self.searches_seen.add(query)
-                return self._parse(self.lookup_saved_search(query), candidates)
+                ss = self.lookup_saved_search(query)
+                if ss is None:
+                    raise ParseException(_('Unknown saved search: {}').format(query))
+                return self._parse(ss, candidates)
             except ParseException as e:
                 raise e
             except:  # convert all exceptions (e.g., missing key) to a parse error
@@ -424,6 +434,7 @@ class SearchQueryParser(object):
         return set([])
 
 # Testing {{{
+
 
 class Tester(SearchQueryParser):
 
@@ -801,8 +812,8 @@ def main(args=sys.argv):
 
     return 0
 
+
 if __name__ == '__main__':
     sys.exit(main())
 
 # }}}
-

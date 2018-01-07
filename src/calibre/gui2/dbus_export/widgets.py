@@ -16,10 +16,12 @@ from calibre.constants import iswindows, isosx
 UNITY_WINDOW_REGISTRAR = ('com.canonical.AppMenu.Registrar', '/com/canonical/AppMenu/Registrar', 'com.canonical.AppMenu.Registrar')
 STATUS_NOTIFIER = ("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher")
 
+
 def log(*args, **kw):
     kw['file'] = sys.stderr
     print('DBusExport:', *args, **kw)
     kw['file'].flush()
+
 
 class MenuBarAction(QAction):
 
@@ -29,7 +31,9 @@ class MenuBarAction(QAction):
     def menu(self):
         return self.parent()
 
+
 menu_counter = 0
+
 
 class ExportedMenuBar(QMenuBar):  # {{{
 
@@ -55,10 +59,6 @@ class ExportedMenuBar(QMenuBar):  # {{{
         self.dbus_menu.publish_new_menu(self)
         self.register()
         parent.installEventFilter(self)
-        # See https://bugreports.qt-project.org/browse/QTBUG-42281
-        if hasattr(parent, 'window_blocked'):
-            parent.window_blocked.connect(self._block)
-            parent.window_unblocked.connect(self._unblock)
 
     def register(self, menu_registrar=None):
         self.menu_registrar = menu_registrar or self.menu_registrar
@@ -100,13 +100,6 @@ class ExportedMenuBar(QMenuBar):  # {{{
 
     def eventFilter(self, obj, ev):
         etype = ev.type()
-        # WindowBlocked and WindowUnblocked aren't delivered to event filters,
-        # so we have to rely on co-operation from the mainwindow class
-        # See https://bugreports.qt-project.org/browse/QTBUG-42281
-        # if etype == QEvent.WindowBlocked:
-        #     self._block()
-        # elif etype == QEvent.WindowUnblocked:
-        #     self._unblock()
         if etype == QEvent.Show:
             # Hiding a window causes the registrar to auto-unregister it, so we
             # have to re-register it on show events.
@@ -117,6 +110,7 @@ class ExportedMenuBar(QMenuBar):  # {{{
         return False
 
 # }}}
+
 
 class Factory(QObject):
 
@@ -250,7 +244,10 @@ class Factory(QObject):
             self.bus
         # TODO: have the created widgets also handle bus disconnection
 
+
 _factory = None
+
+
 def factory(app_id=None):
     global _factory
     if _factory is None:

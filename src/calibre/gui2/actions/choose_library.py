@@ -20,9 +20,11 @@ from calibre.gui2 import (gprefs, warning_dialog, Dispatcher, error_dialog,
     question_dialog, info_dialog, open_local_file, choose_dir)
 from calibre.gui2.actions import InterfaceAction
 
+
 def db_class():
     from calibre.db.legacy import LibraryDatabase
     return LibraryDatabase
+
 
 class LibraryUsageStats(object):  # {{{
 
@@ -77,7 +79,7 @@ class LibraryUsageStats(object):  # {{{
         if lpath in locs:
             locs.remove(lpath)
         limit = tweaks['many_libraries'] if limit is None else limit
-        key = sort_key if len(locs) > limit else lambda x:self.stats[x]
+        key = (lambda x:sort_key(os.path.basename(x))) if len(locs) > limit else self.stats.get
         locs.sort(key=key, reverse=len(locs)<=limit)
         for loc in locs:
             yield self.pretty(loc), loc
@@ -94,6 +96,7 @@ class LibraryUsageStats(object):  # {{{
             self.stats[newloc] = stats
         self.write_stats()
 # }}}
+
 
 class MovedDialog(QDialog):  # {{{
 
@@ -151,6 +154,7 @@ class MovedDialog(QDialog):  # {{{
         QDialog.accept(self)
 # }}}
 
+
 class BackupStatus(QDialog):  # {{{
 
     def __init__(self, gui):
@@ -207,7 +211,7 @@ class ChooseLibraryAction(InterfaceAction):
     def genesis(self):
         self.count_changed(0)
         self.action_choose = self.menuless_qaction
-        self.action_exim = ac = QAction(_('Export/Import all calibre data'), self.gui)
+        self.action_exim = ac = QAction(_('Export/import all calibre data'), self.gui)
         ac.triggered.connect(self.exim_data)
 
         self.stats = LibraryUsageStats()
@@ -252,7 +256,7 @@ class ChooseLibraryAction(InterfaceAction):
 
         self.rename_separator = self.choose_menu.addSeparator()
 
-        self.maintenance_menu = QMenu(_('Library Maintenance'))
+        self.maintenance_menu = QMenu(_('Library maintenance'))
         ac = self.create_action(spec=(_('Library metadata backup status'),
                         'lt.png', None, None), attr='action_backup_status')
         ac.triggered.connect(self.backup_status, type=Qt.QueuedConnection)
@@ -287,9 +291,9 @@ class ChooseLibraryAction(InterfaceAction):
         if isportable:
             return error_dialog(self.gui, _('Cannot export/import'), _(
                 'You are running calibre portable, all calibre data is already in the'
-                ' calibre portable folder. Export/Import is unavailable.'), show=True)
+                ' calibre portable folder. Export/import is unavailable.'), show=True)
         if self.gui.job_manager.has_jobs():
-            return error_dialog(self.gui, _('Cannot Export/Import'),
+            return error_dialog(self.gui, _('Cannot export/import'),
                     _('Cannot export/import data while there are running jobs.'), show=True)
         from calibre.gui2.dialogs.exim import EximDialog
         d = EximDialog(parent=self.gui)
@@ -417,6 +421,7 @@ class ChooseLibraryAction(InterfaceAction):
                       'Try switching to this library first, then switch back '
                       'and retry the renaming.')%loc, show=True)
             return
+        self.gui.library_broker.remove_library(loc)
         try:
             os.rename(loc, newloc)
         except:
@@ -444,6 +449,7 @@ class ChooseLibraryAction(InterfaceAction):
                 yes_text=_('&OK'), no_text=_('&Undo'), yes_icon='ok.png', no_icon='edit-undo.png'):
             return
         self.stats.remove(location)
+        self.gui.library_broker.remove_library(location)
         self.build_menus()
         self.gui.iactions['Copy To Library'].build_menus()
         if os.path.exists(loc):
@@ -480,7 +486,7 @@ class ChooseLibraryAction(InterfaceAction):
         db = m.db
         db.prefs.disable_setting = True
         if restore_database(db, self.gui):
-            self.gui.library_moved(db.library_path, call_close=False)
+            self.gui.library_moved(db.library_path)
 
     def check_library(self):
         from calibre.gui2.dialogs.check_library import CheckLibraryDialog, DBCheck
@@ -489,16 +495,16 @@ class ChooseLibraryAction(InterfaceAction):
         m.stop_metadata_backup()
         db = m.db
         db.prefs.disable_setting = True
+        library_path = db.library_path
 
         d = DBCheck(self.gui, db)
         d.start()
         try:
-            d.conn.close()
+            m.close()
         except:
             pass
         d.break_cycles()
-        self.gui.library_moved(db.library_path, call_close=not
-                d.closed_orig_conn)
+        self.gui.library_moved(library_path)
         if d.rejected:
             return
         if d.error is None:
@@ -629,4 +635,3 @@ class ChooseLibraryAction(InterfaceAction):
             return False
 
         return True
-

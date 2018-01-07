@@ -9,6 +9,7 @@ from calibre.customize.conversion import InputFormatPlugin
 from calibre.ptempfile import TemporaryDirectory
 from calibre.constants import filesystem_encoding
 
+
 class CHMInput(InputFormatPlugin):
 
     name        = 'CHM Input'
@@ -37,11 +38,11 @@ class CHMInput(InputFormatPlugin):
             html_input = plugin_for_input_format('html')
             for opt in html_input.options:
                 setattr(options, opt.option.name, opt.recommended_value)
-            no_images = False #options.no_images
+            no_images = False  # options.no_images
             chm_name = stream.name
-            #chm_data = stream.read()
+            # chm_data = stream.read()
 
-            #closing stream so CHM can be opened by external library
+            # closing stream so CHM can be opened by external library
             stream.close()
             log.debug('tdir=%s' % tdir)
             log.debug('stream.name=%s' % stream.name)
@@ -53,7 +54,12 @@ class CHMInput(InputFormatPlugin):
                     debug_dump=debug_dump)
             mainpath = os.path.join(tdir, mainname)
 
-            metadata = get_metadata_from_reader(self._chm_reader)
+            try:
+                metadata = get_metadata_from_reader(self._chm_reader)
+            except Exception:
+                log.exception('Failed to read metadata, using filename')
+                from calibre.ebooks.metadata.book.base import Metadata
+                metadata = Metadata(os.path.basename(chm_name))
             encoding = self._chm_reader.get_encoding() or options.input_encoding or 'cp1252'
             self._chm_reader.CloseCHM()
             # print tdir, mainpath
@@ -109,10 +115,10 @@ class CHMInput(InputFormatPlugin):
                             strip_encoding_pats=True, resolve_entities=True)[0]
         hhcroot = html.fromstring(hhcdata)
         toc = self._process_nodes(hhcroot)
-        #print "============================="
-        #print "Printing hhcroot"
-        #print etree.tostring(hhcroot, pretty_print=True)
-        #print "============================="
+        # print "============================="
+        # print "Printing hhcroot"
+        # print etree.tostring(hhcroot, pretty_print=True)
+        # print "============================="
         log.debug('Found %d section nodes' % toc.count())
         htmlpath = os.path.splitext(hhcpath)[0] + ".html"
         base = os.path.dirname(os.path.abspath(htmlpath))
@@ -132,7 +138,8 @@ class CHMInput(InputFormatPlugin):
         def donode(item, parent, base, subpath):
             for child in item:
                 title = child.title
-                if not title: continue
+                if not title:
+                    continue
                 raw = unquote_path(child.href or '')
                 rsrcname = os.path.basename(raw)
                 rsrcpath = os.path.join(subpath, rsrcname)
@@ -192,5 +199,3 @@ class CHMInput(InputFormatPlugin):
         for node in root.xpath('//object'):
             self.add_node(node, toc, ancestor_map)
         return toc
-
-

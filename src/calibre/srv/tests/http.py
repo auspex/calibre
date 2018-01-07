@@ -6,13 +6,17 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import httplib, hashlib, zlib, string, time
+import httplib, hashlib, zlib, string, time, os
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 
 from calibre import guess_type
 from calibre.srv.tests.base import BaseTest, TestServer
+from calibre.srv.utils import eintr_retry_call
 from calibre.utils.monotonic import monotonic
+
+is_ci = os.environ.get('CI', '').lower() == 'true'
+
 
 class TestHTTP(BaseTest):
 
@@ -57,6 +61,7 @@ class TestHTTP(BaseTest):
     def test_accept_encoding(self):  # {{{
         'Test parsing of Accept-Encoding'
         from calibre.srv.http_response import acceptable_encoding
+
         def test(name, val, ans, allowed={'gzip'}):
             self.ae(acceptable_encoding(val, allowed), ans, name + ' failed')
         test('Empty field', '', None)
@@ -70,6 +75,7 @@ class TestHTTP(BaseTest):
         'Test parsing of Accept-Language'
         from calibre.srv.http_response import preferred_lang
         from calibre.utils.localization import get_translator
+
         def test(name, val, ans):
             self.ae(preferred_lang(val, lambda x:(True, x, None)), ans, name + ' failed')
         test('Empty field', '', 'en')
@@ -81,7 +87,7 @@ class TestHTTP(BaseTest):
         def handler(data):
             return data.lang_code + data._('Unknown')
 
-        with TestServer(handler, timeout=0.1) as server:
+        with TestServer(handler, timeout=0.3) as server:
             conn = server.connect()
 
             def test(al, q):
@@ -100,6 +106,7 @@ class TestHTTP(BaseTest):
     def test_range_parsing(self):  # {{{
         'Test parsing of Range header'
         from calibre.srv.http_response import get_ranges
+
         def test(val, *args):
             pval = get_ranges(val, 100)
             if len(args) == 1 and args[0] is None:
@@ -122,14 +129,18 @@ class TestHTTP(BaseTest):
         'Test basic HTTP protocol conformance'
         from calibre.srv.errors import HTTPNotFound, HTTPRedirect
         body = 'Requested resource not found'
+
         def handler(data):
             raise HTTPNotFound(body)
+
         def raw_send(conn, raw):
             conn.send(raw)
             conn._HTTPConnection__state = httplib._CS_REQ_SENT
             return conn.getresponse()
 
-        with TestServer(handler, timeout=0.1, max_header_line_size=100./1024, max_request_body_size=100./(1024*1024)) as server:
+        base_timeout = 0.5 if is_ci else 0.1
+
+        with TestServer(handler, timeout=base_timeout, max_header_line_size=100./1024, max_request_body_size=100./(1024*1024)) as server:
             conn = server.connect()
             r = raw_send(conn, b'hello\n')
             self.ae(r.status, httplib.BAD_REQUEST)
@@ -189,7 +200,7 @@ class TestHTTP(BaseTest):
             self.ae('', r.read())
 
             server.change_handler(lambda data:data.path[0] + data.read().decode('ascii'))
-            conn = server.connect()
+            conn = server.connect(timeout=base_timeout * 5)
 
             # Test simple GET
             conn.request('GET', '/test/')
@@ -249,7 +260,7 @@ class TestHTTP(BaseTest):
             r = conn.getresponse()
             self.ae(r.status, httplib.BAD_REQUEST), self.ae(r.read(), b'Chunk does not have trailing CRLF')
 
-            conn = server.connect(timeout=1)
+            conn = server.connect(timeout=base_timeout * 5)
             conn.request('POST', '/test', headers={'Transfer-Encoding': 'chunked'})
             conn.send(b'30\r\nbody\r\n0\r\n\r\n')
             r = conn.getresponse()
@@ -274,7 +285,6 @@ class TestHTTP(BaseTest):
             server.loop.opts.timeout = 10  # ensure socket is not closed because of timeout
             conn.request('GET', '/close', headers={'Connection':'close'})
             r = conn.getresponse()
-            self.ae(server.loop.num_active_connections, 1)
             self.ae(r.status, 200), self.ae(r.read(), 'close')
             server.loop.wakeup()
             num = 10
@@ -283,15 +293,24 @@ class TestHTTP(BaseTest):
                 num -= 1
             self.ae(server.loop.num_active_connections, 0)
             self.assertIsNone(conn.sock)
+
+            # Test timeout
+            server.loop.opts.timeout = 0.1
+            conn = server.connect(timeout=1)
+            conn.request('GET', '/something')
+            r = conn.getresponse()
+            self.ae(r.status, 200), self.ae(r.read(), 'something')
+            self.assertIn('Request Timeout', eintr_retry_call(conn.sock.recv, 500))
     # }}}
 
     def test_http_response(self):  # {{{
         'Test HTTP protocol responses'
         from calibre.srv.http_response import parse_multipart_byterange
+
         def handler(conn):
             return conn.generate_static_output('test', lambda : ''.join(conn.path))
         with NamedTemporaryFile(suffix='test.epub') as f, open(P('localization/locales.zip'), 'rb') as lf, \
-                TestServer(handler, timeout=0.2, compress_min_size=0) as server:
+                TestServer(handler, timeout=1, compress_min_size=0) as server:
             fdata = string.ascii_letters * 100
             f.write(fdata), f.seek(0)
 
@@ -318,6 +337,7 @@ class TestHTTP(BaseTest):
 
             # Test dynamic etagged content
             num_calls = [0]
+
             def edfunc():
                 num_calls[0] += 1
                 return b'data'
@@ -391,7 +411,7 @@ class TestHTTP(BaseTest):
                 lf.seek(0)
                 data =  lf.read()
                 server.change_handler(lambda conn: lf)
-                conn = server.connect()
+                conn = server.connect(timeout=1)
                 conn.request('GET', '/test')
                 r = conn.getresponse()
                 self.ae(r.status, httplib.OK)
@@ -407,6 +427,7 @@ class TestHTTP(BaseTest):
     def test_static_generation(self):  # {{{
         'Test static generation'
         nums = list(map(str, xrange(10)))
+
         def handler(conn):
             return conn.generate_static_output('test', nums.pop)
         with TestServer(handler) as server:
@@ -419,4 +440,3 @@ class TestHTTP(BaseTest):
                 r = conn.getresponse()
                 self.assertEqual(data, r.read())
     # }}}
-

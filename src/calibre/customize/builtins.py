@@ -15,6 +15,7 @@ plugins = []
 
 # To archive plugins {{{
 
+
 class PML2PMLZ(FileTypePlugin):
     name = 'PML to PMLZ'
     author = 'John Schember'
@@ -44,6 +45,7 @@ class PML2PMLZ(FileTypePlugin):
         pmlz.close()
 
         return of.name
+
 
 class TXT2TXTZ(FileTypePlugin):
     name = 'TXT to TXTZ'
@@ -120,10 +122,13 @@ class TXT2TXTZ(FileTypePlugin):
             # No images so just import the TXT file.
             return path_to_ebook
 
+
 plugins += [HTML2ZIP, PML2PMLZ, TXT2TXTZ, ArchiveExtract,]
 # }}}
 
 # Metadata reader plugins {{{
+
+
 class ComicMetadataReader(MetadataReaderPlugin):
 
     name = 'Read comic metadata'
@@ -164,6 +169,7 @@ class ComicMetadataReader(MetadataReaderPlugin):
             mi.cover_data = (ext.lower(), data)
         return mi
 
+
 class CHMMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read CHM metadata'
@@ -187,6 +193,7 @@ class EPUBMetadataReader(MetadataReaderPlugin):
             return get_quick_metadata(stream)
         return get_metadata(stream)
 
+
 class FB2MetadataReader(MetadataReaderPlugin):
 
     name        = 'Read FB2 metadata'
@@ -197,6 +204,7 @@ class FB2MetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.fb2 import get_metadata
         return get_metadata(stream)
 
+
 class HTMLMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read HTML metadata'
@@ -206,6 +214,7 @@ class HTMLMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.html import get_metadata
         return get_metadata(stream)
+
 
 class HTMLZMetadataReader(MetadataReaderPlugin):
 
@@ -218,6 +227,7 @@ class HTMLZMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.extz import get_metadata
         return get_metadata(stream)
 
+
 class IMPMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read IMP metadata'
@@ -229,6 +239,7 @@ class IMPMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.imp import get_metadata
         return get_metadata(stream)
 
+
 class LITMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read LIT metadata'
@@ -238,6 +249,7 @@ class LITMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.lit import get_metadata
         return get_metadata(stream)
+
 
 class LRFMetadataReader(MetadataReaderPlugin):
 
@@ -249,6 +261,7 @@ class LRFMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.lrf.meta import get_metadata
         return get_metadata(stream)
 
+
 class LRXMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read LRX metadata'
@@ -258,6 +271,7 @@ class LRXMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.lrx import get_metadata
         return get_metadata(stream)
+
 
 class MOBIMetadataReader(MetadataReaderPlugin):
 
@@ -269,6 +283,7 @@ class MOBIMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.mobi import get_metadata
         return get_metadata(stream)
 
+
 class ODTMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read ODT metadata'
@@ -278,6 +293,7 @@ class ODTMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.odt import get_metadata
         return get_metadata(stream)
+
 
 class DocXMetadataReader(MetadataReaderPlugin):
 
@@ -289,15 +305,17 @@ class DocXMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.docx import get_metadata
         return get_metadata(stream)
 
+
 class OPFMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read OPF metadata'
-    file_types  = set(['opf'])
+    file_types  = {'opf'}
     description = _('Read metadata from %s files')%'OPF'
 
     def get_metadata(self, stream, ftype):
-        from calibre.ebooks.metadata.opf2 import OPF
-        return OPF(stream, os.getcwdu()).to_book_metadata()
+        from calibre.ebooks.metadata.opf import get_metadata
+        return get_metadata(stream)[0]
+
 
 class PDBMetadataReader(MetadataReaderPlugin):
 
@@ -309,6 +327,7 @@ class PDBMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.pdb import get_metadata
         return get_metadata(stream)
+
 
 class PDFMetadataReader(MetadataReaderPlugin):
 
@@ -322,6 +341,7 @@ class PDFMetadataReader(MetadataReaderPlugin):
             return get_quick_metadata(stream)
         return get_metadata(stream)
 
+
 class PMLMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read PML metadata'
@@ -333,15 +353,17 @@ class PMLMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.pml import get_metadata
         return get_metadata(stream)
 
+
 class RARMetadataReader(MetadataReaderPlugin):
 
     name = 'Read RAR metadata'
     file_types = set(['rar'])
-    description = _('Read metadata from ebooks in RAR archives')
+    description = _('Read metadata from e-books in RAR archives')
 
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.rar import get_metadata
         return get_metadata(stream)
+
 
 class RBMetadataReader(MetadataReaderPlugin):
 
@@ -354,6 +376,7 @@ class RBMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.rb import get_metadata
         return get_metadata(stream)
 
+
 class RTFMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read RTF metadata'
@@ -363,6 +386,7 @@ class RTFMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.rtf import get_metadata
         return get_metadata(stream)
+
 
 class SNBMetadataReader(MetadataReaderPlugin):
 
@@ -375,6 +399,7 @@ class SNBMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.snb import get_metadata
         return get_metadata(stream)
 
+
 class TOPAZMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read Topaz metadata'
@@ -384,6 +409,7 @@ class TOPAZMetadataReader(MetadataReaderPlugin):
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.topaz import get_metadata
         return get_metadata(stream)
+
 
 class TXTMetadataReader(MetadataReaderPlugin):
 
@@ -396,6 +422,7 @@ class TXTMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.txt import get_metadata
         return get_metadata(stream)
 
+
 class TXTZMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read TXTZ metadata'
@@ -407,15 +434,17 @@ class TXTZMetadataReader(MetadataReaderPlugin):
         from calibre.ebooks.metadata.extz import get_metadata
         return get_metadata(stream)
 
+
 class ZipMetadataReader(MetadataReaderPlugin):
 
     name = 'Read ZIP metadata'
     file_types = set(['zip', 'oebzip'])
-    description = _('Read metadata from ebooks in ZIP archives')
+    description = _('Read metadata from e-books in ZIP archives')
 
     def get_metadata(self, stream, ftype):
         from calibre.ebooks.metadata.zip import get_metadata
         return get_metadata(stream)
+
 
 plugins += [x for x in list(locals().values()) if isinstance(x, type) and
                                         x.__name__.endswith('MetadataReader')]
@@ -423,6 +452,7 @@ plugins += [x for x in list(locals().values()) if isinstance(x, type) and
 # }}}
 
 # Metadata writer plugins {{{
+
 
 class EPUBMetadataWriter(MetadataWriterPlugin):
 
@@ -432,7 +462,16 @@ class EPUBMetadataWriter(MetadataWriterPlugin):
 
     def set_metadata(self, stream, mi, type):
         from calibre.ebooks.metadata.epub import set_metadata
-        set_metadata(stream, mi, apply_null=self.apply_null, force_identifiers=self.force_identifiers)
+        q = self.site_customization or ''
+        set_metadata(stream, mi, apply_null=self.apply_null, force_identifiers=self.force_identifiers, add_missing_cover='disable-add-missing-cover' != q)
+
+    def customization_help(self, gui=False):
+        h = 'disable-add-missing-cover'
+        if gui:
+            h = '<i>' + h + '</i>'
+        return _('Enter {0} below to have the EPUB metadata writer plugin not'
+                 ' add cover images to EPUB files that have no existing cover image.').format(h)
+
 
 class FB2MetadataWriter(MetadataWriterPlugin):
 
@@ -443,6 +482,7 @@ class FB2MetadataWriter(MetadataWriterPlugin):
     def set_metadata(self, stream, mi, type):
         from calibre.ebooks.metadata.fb2 import set_metadata
         set_metadata(stream, mi, apply_null=self.apply_null)
+
 
 class HTMLZMetadataWriter(MetadataWriterPlugin):
 
@@ -455,6 +495,7 @@ class HTMLZMetadataWriter(MetadataWriterPlugin):
         from calibre.ebooks.metadata.extz import set_metadata
         set_metadata(stream, mi)
 
+
 class LRFMetadataWriter(MetadataWriterPlugin):
 
     name = 'Set LRF metadata'
@@ -464,6 +505,7 @@ class LRFMetadataWriter(MetadataWriterPlugin):
     def set_metadata(self, stream, mi, type):
         from calibre.ebooks.lrf.meta import set_metadata
         set_metadata(stream, mi)
+
 
 class MOBIMetadataWriter(MetadataWriterPlugin):
 
@@ -476,6 +518,7 @@ class MOBIMetadataWriter(MetadataWriterPlugin):
         from calibre.ebooks.metadata.mobi import set_metadata
         set_metadata(stream, mi)
 
+
 class PDBMetadataWriter(MetadataWriterPlugin):
 
     name        = 'Set PDB metadata'
@@ -486,6 +529,7 @@ class PDBMetadataWriter(MetadataWriterPlugin):
     def set_metadata(self, stream, mi, type):
         from calibre.ebooks.metadata.pdb import set_metadata
         set_metadata(stream, mi)
+
 
 class PDFMetadataWriter(MetadataWriterPlugin):
 
@@ -498,6 +542,7 @@ class PDFMetadataWriter(MetadataWriterPlugin):
         from calibre.ebooks.metadata.pdf import set_metadata
         set_metadata(stream, mi)
 
+
 class RTFMetadataWriter(MetadataWriterPlugin):
 
     name = 'Set RTF metadata'
@@ -507,6 +552,7 @@ class RTFMetadataWriter(MetadataWriterPlugin):
     def set_metadata(self, stream, mi, type):
         from calibre.ebooks.metadata.rtf import set_metadata
         set_metadata(stream, mi)
+
 
 class TOPAZMetadataWriter(MetadataWriterPlugin):
 
@@ -519,6 +565,7 @@ class TOPAZMetadataWriter(MetadataWriterPlugin):
         from calibre.ebooks.metadata.topaz import set_metadata
         set_metadata(stream, mi)
 
+
 class TXTZMetadataWriter(MetadataWriterPlugin):
 
     name        = 'Set TXTZ metadata'
@@ -529,6 +576,7 @@ class TXTZMetadataWriter(MetadataWriterPlugin):
     def set_metadata(self, stream, mi, type):
         from calibre.ebooks.metadata.extz import set_metadata
         set_metadata(stream, mi)
+
 
 class DocXMetadataWriter(MetadataWriterPlugin):
 
@@ -654,14 +702,13 @@ from calibre.devices.cybook.driver import CYBOOK, ORIZON, MUSE
 from calibre.devices.eb600.driver import (EB600, COOL_ER, SHINEBOOK, TOLINO,
                 POCKETBOOK360, GER2, ITALICA, ECLICTO, DBOOK, INVESBOOK,
                 BOOQ, ELONEX, POCKETBOOK301, MENTOR, POCKETBOOK602,
-                POCKETBOOK701, POCKETBOOK360P, PI2, POCKETBOOK622)
+                POCKETBOOK701, POCKETBOOK360P, PI2, POCKETBOOK622, POCKETBOOKHD)
 from calibre.devices.iliad.driver import ILIAD
 from calibre.devices.irexdr.driver import IREXDR1000, IREXDR800
 from calibre.devices.jetbook.driver import (JETBOOK, MIBUK, JETBOOK_MINI,
         JETBOOK_COLOR)
 from calibre.devices.kindle.driver import (KINDLE, KINDLE2, KINDLE_DX,
         KINDLE_FIRE)
-from calibre.devices.apple.driver import ITUNES
 from calibre.devices.nook.driver import NOOK, NOOK_COLOR
 from calibre.devices.prs505.driver import PRS505
 from calibre.devices.prst1.driver import PRST1
@@ -681,7 +728,7 @@ from calibre.devices.sne.driver import SNE
 from calibre.devices.misc import (
     PALMPRE, AVANT, SWEEX, PDNOVEL, GEMEI, VELOCITYMICRO, PDNOVEL_KOBO,
     LUMIREAD, ALURATEK_COLOR, TREKSTOR, EEEREADER, NEXTBOOK, ADAM, MOOVYBOOK,
-    COBY, EX124G, WAYTEQ, WOXTER, POCKETBOOK626, SONYDPTS1)
+    COBY, EX124G, WAYTEQ, WOXTER, POCKETBOOK626, SONYDPTS1, CERVANTES)
 from calibre.devices.folder_device.driver import FOLDER_DEVICE_FOR_CONFIG
 from calibre.devices.kobo.driver import KOBO, KOBOTOUCH
 from calibre.devices.boeye.driver import BOEYE_BEX, BOEYE_BDX
@@ -700,7 +747,7 @@ plugins += [
     JETBOOK, JETBOOK_MINI, MIBUK, JETBOOK_COLOR,
     SHINEBOOK,
     POCKETBOOK360, POCKETBOOK301, POCKETBOOK602, POCKETBOOK701, POCKETBOOK360P,
-    POCKETBOOK622, PI2,
+    POCKETBOOK622, PI2, POCKETBOOKHD,
     KINDLE, KINDLE2, KINDLE_DX, KINDLE_FIRE,
     NOOK, NOOK_COLOR,
     PRS505, PRST1,
@@ -738,7 +785,7 @@ plugins += [
     KOBO, KOBOTOUCH,
     AZBOOKA,
     FOLDER_DEVICE_FOR_CONFIG,
-    AVANT,
+    AVANT, CERVANTES,
     MENTOR,
     SWEEX,
     PDNOVEL,
@@ -753,7 +800,6 @@ plugins += [
     NEXTBOOK,
     ADAM,
     MOOVYBOOK, COBY, EX124G, WAYTEQ, WOXTER, POCKETBOOK626, SONYDPTS1,
-    ITUNES,
     BOEYE_BEX,
     BOEYE_BDX,
     MTP_DEVICE,
@@ -782,90 +828,108 @@ plugins += [GoogleBooks, GoogleImages, Amazon, Edelweiss, OpenLibrary, ISBNDB, O
 
 # Interface Actions {{{
 
+
 class ActionAdd(InterfaceActionBase):
     name = 'Add Books'
     actual_plugin = 'calibre.gui2.actions.add:AddAction'
     description = _('Add books to calibre or the connected device')
+
 
 class ActionFetchAnnotations(InterfaceActionBase):
     name = 'Fetch Annotations'
     actual_plugin = 'calibre.gui2.actions.annotate:FetchAnnotationsAction'
     description = _('Fetch annotations from a connected Kindle (experimental)')
 
+
 class ActionGenerateCatalog(InterfaceActionBase):
     name = 'Generate Catalog'
     actual_plugin = 'calibre.gui2.actions.catalog:GenerateCatalogAction'
     description = _('Generate a catalog of the books in your calibre library')
 
+
 class ActionConvert(InterfaceActionBase):
     name = 'Convert Books'
     actual_plugin = 'calibre.gui2.actions.convert:ConvertAction'
-    description = _('Convert books to various ebook formats')
+    description = _('Convert books to various e-book formats')
+
 
 class ActionPolish(InterfaceActionBase):
     name = 'Polish Books'
     actual_plugin = 'calibre.gui2.actions.polish:PolishAction'
-    description = _('Fine tune your ebooks')
+    description = _('Fine tune your e-books')
+
 
 class ActionEditToC(InterfaceActionBase):
     name = 'Edit ToC'
     actual_plugin = 'calibre.gui2.actions.toc_edit:ToCEditAction'
     description = _('Edit the Table of Contents in your books')
 
+
 class ActionDelete(InterfaceActionBase):
     name = 'Remove Books'
     actual_plugin = 'calibre.gui2.actions.delete:DeleteAction'
     description = _('Delete books from your calibre library or connected device')
+
 
 class ActionEmbed(InterfaceActionBase):
     name = 'Embed Metadata'
     actual_plugin = 'calibre.gui2.actions.embed:EmbedAction'
     description = _('Embed updated metadata into the actual book files in your calibre library')
 
+
 class ActionEditMetadata(InterfaceActionBase):
     name = 'Edit Metadata'
     actual_plugin = 'calibre.gui2.actions.edit_metadata:EditMetadataAction'
     description = _('Edit the metadata of books in your calibre library')
+
 
 class ActionView(InterfaceActionBase):
     name = 'View'
     actual_plugin = 'calibre.gui2.actions.view:ViewAction'
     description = _('Read books in your calibre library')
 
+
 class ActionFetchNews(InterfaceActionBase):
     name = 'Fetch News'
     actual_plugin = 'calibre.gui2.actions.fetch_news:FetchNewsAction'
-    description = _('Download news from the internet in ebook form')
+    description = _('Download news from the internet in e-book form')
+
 
 class ActionQuickview(InterfaceActionBase):
-    name = 'Show Quickview'
+    name = 'Quickview'
     actual_plugin = 'calibre.gui2.actions.show_quickview:ShowQuickviewAction'
     description = _('Show a list of related books quickly')
+
 
 class ActionTagMapper(InterfaceActionBase):
     name = 'Tag Mapper'
     actual_plugin = 'calibre.gui2.actions.tag_mapper:TagMapAction'
     description = _('Filter/transform the tags for books in the library')
 
+
 class ActionTemplateTester(InterfaceActionBase):
     name = 'Template Tester'
     actual_plugin = 'calibre.gui2.actions.show_template_tester:ShowTemplateTesterAction'
     description = _('Show an editor for testing templates')
+
 
 class ActionSaveToDisk(InterfaceActionBase):
     name = 'Save To Disk'
     actual_plugin = 'calibre.gui2.actions.save_to_disk:SaveToDiskAction'
     description = _('Export books from your calibre library to the hard disk')
 
+
 class ActionShowBookDetails(InterfaceActionBase):
     name = 'Show Book Details'
     actual_plugin = 'calibre.gui2.actions.show_book_details:ShowBookDetailsAction'
-    description = _('Show book details in a separate popup')
+    description = _('Show Book details in a separate popup')
+
 
 class ActionRestart(InterfaceActionBase):
     name = 'Restart'
     actual_plugin = 'calibre.gui2.actions.restart:RestartAction'
     description = _('Restart calibre')
+
 
 class ActionOpenFolder(InterfaceActionBase):
     name = 'Open Folder'
@@ -873,31 +937,37 @@ class ActionOpenFolder(InterfaceActionBase):
     description = _('Open the folder that contains the book files in your'
             ' calibre library')
 
+
 class ActionSendToDevice(InterfaceActionBase):
     name = 'Send To Device'
     actual_plugin = 'calibre.gui2.actions.device:SendToDeviceAction'
     description = _('Send books to the connected device')
 
+
 class ActionConnectShare(InterfaceActionBase):
     name = 'Connect Share'
     actual_plugin = 'calibre.gui2.actions.device:ConnectShareAction'
-    description = _('Send books via email or the web also connect to iTunes or'
+    description = _('Send books via email or the web. Also connect to'
             ' folders on your computer as if they are devices')
+
 
 class ActionHelp(InterfaceActionBase):
     name = 'Help'
     actual_plugin = 'calibre.gui2.actions.help:HelpAction'
     description = _('Browse the calibre User Manual')
 
+
 class ActionPreferences(InterfaceActionBase):
     name = 'Preferences'
     actual_plugin = 'calibre.gui2.actions.preferences:PreferencesAction'
     description = _('Customize calibre')
 
+
 class ActionSimilarBooks(InterfaceActionBase):
     name = 'Similar Books'
     actual_plugin = 'calibre.gui2.actions.similar_books:SimilarBooksAction'
     description = _('Easily find books similar to the currently selected one')
+
 
 class ActionChooseLibrary(InterfaceActionBase):
     name = 'Choose Library'
@@ -905,35 +975,42 @@ class ActionChooseLibrary(InterfaceActionBase):
     description = _('Switch between different calibre libraries and perform'
             ' maintenance on them')
 
+
 class ActionAddToLibrary(InterfaceActionBase):
     name = 'Add To Library'
     actual_plugin = 'calibre.gui2.actions.add_to_library:AddToLibraryAction'
     description = _('Copy books from the device to your calibre library')
+
 
 class ActionEditCollections(InterfaceActionBase):
     name = 'Edit Collections'
     actual_plugin = 'calibre.gui2.actions.edit_collections:EditCollectionsAction'
     description = _('Edit the collections in which books are placed on your device')
 
+
 class ActionMatchBooks(InterfaceActionBase):
     name = 'Match Books'
     actual_plugin = 'calibre.gui2.actions.match_books:MatchBookAction'
     description = _('Match book on the devices to books in the library')
+
 
 class ActionCopyToLibrary(InterfaceActionBase):
     name = 'Copy To Library'
     actual_plugin = 'calibre.gui2.actions.copy_to_library:CopyToLibraryAction'
     description = _('Copy a book from one calibre library to another')
 
+
 class ActionTweakEpub(InterfaceActionBase):
     name = 'Tweak ePub'
     actual_plugin = 'calibre.gui2.actions.tweak_epub:TweakEpubAction'
-    description = _('Edit ebooks in the epub or azw3 formats')
+    description = _('Edit e-books in the EPUB or AZW3 formats')
+
 
 class ActionUnpackBook(InterfaceActionBase):
     name = 'Unpack Book'
     actual_plugin = 'calibre.gui2.actions.unpack_book:UnpackBookAction'
-    description = _('Make small changes to epub or htmlz files in your calibre library')
+    description = _('Make small changes to EPUB or HTMLZ files in your calibre library')
+
 
 class ActionNextMatch(InterfaceActionBase):
     name = 'Next Match'
@@ -941,20 +1018,24 @@ class ActionNextMatch(InterfaceActionBase):
     description = _('Find the next or previous match when searching in '
             'your calibre library in highlight mode')
 
+
 class ActionPickRandom(InterfaceActionBase):
     name = 'Pick Random Book'
     actual_plugin = 'calibre.gui2.actions.random:PickRandomAction'
     description = _('Choose a random book from your calibre library')
+
 
 class ActionSortBy(InterfaceActionBase):
     name = 'Sort By'
     actual_plugin = 'calibre.gui2.actions.sort:SortByAction'
     description = _('Sort the list of books')
 
+
 class ActionMarkBooks(InterfaceActionBase):
     name = 'Mark Books'
     actual_plugin = 'calibre.gui2.actions.mark_books:MarkBooksAction'
     description = _('Temporarily mark books')
+
 
 class ActionStore(InterfaceActionBase):
     name = 'Store'
@@ -973,11 +1054,13 @@ class ActionStore(InterfaceActionBase):
         from calibre.gui2.store.config.store import save_settings as save
         save(config_widget)
 
+
 class ActionPluginUpdater(InterfaceActionBase):
     name = 'Plugin Updater'
     author = 'Grant Drake'
     description = _('Get new calibre plugins or update your existing ones')
     actual_plugin = 'calibre.gui2.actions.plugin_updates:PluginUpdaterAction'
+
 
 plugins += [ActionAdd, ActionFetchAnnotations, ActionGenerateCatalog,
         ActionConvert, ActionDelete, ActionEditMetadata, ActionView,
@@ -993,10 +1076,11 @@ plugins += [ActionAdd, ActionFetchAnnotations, ActionGenerateCatalog,
 
 # Preferences Plugins {{{
 
+
 class LookAndFeel(PreferencesPlugin):
     name = 'Look & Feel'
     icon = I('lookfeel.png')
-    gui_name = _('Look and Feel')
+    gui_name = _('Look & feel')
     category = 'Interface'
     gui_category = _('Interface')
     category_order = 1
@@ -1004,6 +1088,7 @@ class LookAndFeel(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.look_feel'
     description = _('Adjust the look and feel of the calibre interface'
             ' to suit your tastes')
+
 
 class Behavior(PreferencesPlugin):
     name = 'Behavior'
@@ -1016,6 +1101,7 @@ class Behavior(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.behavior'
     description = _('Change the way calibre behaves')
 
+
 class Columns(PreferencesPlugin):
     name = 'Custom Columns'
     icon = I('column.png')
@@ -1027,10 +1113,11 @@ class Columns(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.columns'
     description = _('Add/remove your own columns to the calibre book list')
 
+
 class Toolbar(PreferencesPlugin):
     name = 'Toolbar'
     icon = I('wizard.png')
-    gui_name = _('Toolbars')
+    gui_name = _('Toolbars & menus')
     category = 'Interface'
     gui_category = _('Interface')
     category_order = 1
@@ -1038,6 +1125,7 @@ class Toolbar(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.toolbar'
     description = _('Customize the toolbars and context menus, changing which'
             ' actions are available in each')
+
 
 class Search(PreferencesPlugin):
     name = 'Search'
@@ -1050,10 +1138,11 @@ class Search(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.search'
     description = _('Customize the way searching for books works in calibre')
 
+
 class InputOptions(PreferencesPlugin):
     name = 'Input Options'
     icon = I('arrow-down.png')
-    gui_name = _('Input Options')
+    gui_name = _('Input options')
     category = 'Conversion'
     gui_category = _('Conversion')
     category_order = 2
@@ -1066,10 +1155,11 @@ class InputOptions(PreferencesPlugin):
         self.config_widget = 'calibre.gui2.preferences.conversion:InputOptions'
         return PreferencesPlugin.create_widget(self, *args, **kwargs)
 
+
 class CommonOptions(PreferencesPlugin):
     name = 'Common Options'
     icon = I('convert.png')
-    gui_name = _('Common Options')
+    gui_name = _('Common options')
     category = 'Conversion'
     gui_category = _('Conversion')
     category_order = 2
@@ -1077,10 +1167,11 @@ class CommonOptions(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.conversion:CommonOptions'
     description = _('Set conversion options common to all formats')
 
+
 class OutputOptions(PreferencesPlugin):
     name = 'Output Options'
     icon = I('arrow-up.png')
-    gui_name = _('Output Options')
+    gui_name = _('Output options')
     category = 'Conversion'
     gui_category = _('Conversion')
     category_order = 2
@@ -1088,63 +1179,69 @@ class OutputOptions(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.conversion:OutputOptions'
     description = _('Set conversion options specific to each output format')
 
+
 class Adding(PreferencesPlugin):
     name = 'Adding'
     icon = I('add_book.png')
     gui_name = _('Adding books')
     category = 'Import/Export'
-    gui_category = _('Import/Export')
+    gui_category = _('Import/export')
     category_order = 3
     name_order = 1
     config_widget = 'calibre.gui2.preferences.adding'
     description = _('Control how calibre reads metadata from files when '
             'adding books')
 
+
 class Saving(PreferencesPlugin):
     name = 'Saving'
     icon = I('save.png')
     gui_name = _('Saving books to disk')
     category = 'Import/Export'
-    gui_category = _('Import/Export')
+    gui_category = _('Import/export')
     category_order = 3
     name_order = 2
     config_widget = 'calibre.gui2.preferences.saving'
     description = _('Control how calibre exports files from its database '
             'to disk when using Save to disk')
 
+
 class Sending(PreferencesPlugin):
     name = 'Sending'
     icon = I('sync.png')
     gui_name = _('Sending books to devices')
     category = 'Import/Export'
-    gui_category = _('Import/Export')
+    gui_category = _('Import/export')
     category_order = 3
     name_order = 3
     config_widget = 'calibre.gui2.preferences.sending'
     description = _('Control how calibre transfers files to your '
-            'ebook reader')
+            'e-book reader')
+
 
 class Plugboard(PreferencesPlugin):
     name = 'Plugboard'
     icon = I('plugboard.png')
     gui_name = _('Metadata plugboards')
     category = 'Import/Export'
-    gui_category = _('Import/Export')
+    gui_category = _('Import/export')
     category_order = 3
     name_order = 4
     config_widget = 'calibre.gui2.preferences.plugboard'
     description = _('Change metadata fields before saving/sending')
 
+
 class TemplateFunctions(PreferencesPlugin):
     name = 'TemplateFunctions'
     icon = I('template_funcs.png')
-    gui_name = _('Template Functions')
+    gui_name = _('Template functions')
     category = 'Advanced'
     gui_category = _('Advanced')
     category_order = 5
     name_order = 5
     config_widget = 'calibre.gui2.preferences.template_functions'
     description = _('Create your own template functions')
+
 
 class Email(PreferencesPlugin):
     name = 'Email'
@@ -1158,6 +1255,7 @@ class Email(PreferencesPlugin):
     description = _('Setup sharing of books via email. Can be used '
             'for automatic sending of downloaded news to your devices')
 
+
 class Server(PreferencesPlugin):
     name = 'Server'
     icon = I('network-server.png')
@@ -1167,9 +1265,10 @@ class Server(PreferencesPlugin):
     category_order = 4
     name_order = 2
     config_widget = 'calibre.gui2.preferences.server'
-    description = _('Setup the calibre Content Server which will '
+    description = _('Setup the calibre Content server which will '
             'give you access to your calibre library from anywhere, '
             'on any device, over the internet')
+
 
 class MetadataSources(PreferencesPlugin):
     name = 'Metadata download'
@@ -1180,7 +1279,8 @@ class MetadataSources(PreferencesPlugin):
     category_order = 4
     name_order = 3
     config_widget = 'calibre.gui2.preferences.metadata_sources'
-    description = _('Control how calibre downloads ebook metadata from the net')
+    description = _('Control how calibre downloads e-book metadata from the net')
+
 
 class IgnoredDevices(PreferencesPlugin):
     name = 'Ignored Devices'
@@ -1207,9 +1307,10 @@ class Plugins(PreferencesPlugin):
     description = _('Add/remove/customize various bits of calibre '
             'functionality')
 
+
 class Tweaks(PreferencesPlugin):
     name = 'Tweaks'
-    icon = I('drawer.png')
+    icon = I('tweaks.png')
     gui_name = _('Tweaks')
     category = 'Advanced'
     gui_category = _('Advanced')
@@ -1218,16 +1319,18 @@ class Tweaks(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.tweaks'
     description = _('Fine tune how calibre behaves in various contexts')
 
+
 class Keyboard(PreferencesPlugin):
     name = 'Keyboard'
     icon = I('keyboard-prefs.png')
-    gui_name = _('Keyboard')
+    gui_name = _('Shortcuts')
     category = 'Advanced'
     gui_category = _('Advanced')
     category_order = 5
     name_order = 4
     config_widget = 'calibre.gui2.preferences.keyboard'
     description = _('Customize the keyboard shortcuts used by calibre')
+
 
 class Misc(PreferencesPlugin):
     name = 'Misc'
@@ -1240,6 +1343,7 @@ class Misc(PreferencesPlugin):
     config_widget = 'calibre.gui2.preferences.misc'
     description = _('Miscellaneous advanced configuration')
 
+
 plugins += [LookAndFeel, Behavior, Columns, Toolbar, Search, InputOptions,
         CommonOptions, OutputOptions, Adding, Saving, Sending, Plugboard,
         Email, Server, Plugins, Tweaks, Misc, TemplateFunctions,
@@ -1248,6 +1352,8 @@ plugins += [LookAndFeel, Behavior, Columns, Toolbar, Search, InputOptions,
 # }}}
 
 # Store plugins {{{
+
+
 class StoreAmazonKindleStore(StoreBase):
     name = 'Amazon Kindle'
     description = u'Kindle books from Amazon.'
@@ -1257,21 +1363,6 @@ class StoreAmazonKindleStore(StoreBase):
     formats = ['KINDLE']
     affiliate = False
 
-class StoreSonyStore(StoreBase):
-    name = 'SONY Reader Store'
-    description = u'SONY Reader books.'
-    author = 'Kovid Goyal'
-    actual_plugin = 'calibre.gui2.store.stores.sony_plugin:SonyStore'
-
-    headquarters = 'US'
-    formats = ['SONY']
-    affiliate = False
-
-class StoreSonyAUStore(StoreSonyStore):
-    name = 'SONY Reader (Australia) Store'
-    description = u'SONY Reader books (Australia).'
-    actual_plugin = 'calibre.gui2.store.stores.sony_au_plugin:SonyStore'
-    headquarters = 'AU'
 
 class StoreAmazonAUKindleStore(StoreBase):
     name = 'Amazon AU Kindle'
@@ -1282,6 +1373,7 @@ class StoreAmazonAUKindleStore(StoreBase):
     headquarters = 'AU'
     formats = ['KINDLE']
 
+
 class StoreAmazonCAKindleStore(StoreBase):
     name = 'Amazon CA Kindle'
     author = u'Kovid Goyal'
@@ -1290,6 +1382,7 @@ class StoreAmazonCAKindleStore(StoreBase):
 
     headquarters = 'CA'
     formats = ['KINDLE']
+
 
 class StoreAmazonINKindleStore(StoreBase):
     name = 'Amazon IN Kindle'
@@ -1300,6 +1393,7 @@ class StoreAmazonINKindleStore(StoreBase):
     headquarters = 'IN'
     formats = ['KINDLE']
 
+
 class StoreAmazonDEKindleStore(StoreBase):
     name = 'Amazon DE Kindle'
     author = 'Kovid Goyal'
@@ -1309,41 +1403,46 @@ class StoreAmazonDEKindleStore(StoreBase):
     headquarters = 'DE'
     formats = ['KINDLE']
 
+
 class StoreAmazonFRKindleStore(StoreBase):
     name = 'Amazon FR Kindle'
     author = 'Kovid Goyal'
-    description = u'Tous les ebooks Kindle'
+    description = u'Tous les e-books Kindle'
     actual_plugin = 'calibre.gui2.store.stores.amazon_fr_plugin:AmazonKindleStore'
 
     headquarters = 'FR'
     formats = ['KINDLE']
 
+
 class StoreAmazonITKindleStore(StoreBase):
     name = 'Amazon IT Kindle'
     author = 'Kovid Goyal'
-    description = u'eBook Kindle a prezzi incredibili'
+    description = u'e-book Kindle a prezzi incredibili'
     actual_plugin = 'calibre.gui2.store.stores.amazon_it_plugin:AmazonKindleStore'
 
     headquarters = 'IT'
     formats = ['KINDLE']
 
+
 class StoreAmazonESKindleStore(StoreBase):
     name = 'Amazon ES Kindle'
     author = 'Kovid Goyal'
-    description = u'eBook Kindle en España'
+    description = u'e-book Kindle en España'
     actual_plugin = 'calibre.gui2.store.stores.amazon_es_plugin:AmazonKindleStore'
 
     headquarters = 'ES'
     formats = ['KINDLE']
 
+
 class StoreAmazonUKKindleStore(StoreBase):
     name = 'Amazon UK Kindle'
     author = 'Kovid Goyal'
-    description = u'Kindle books from Amazon\'s UK web site. Also, includes French language ebooks.'
+    description = u'Kindle books from Amazon\'s UK web site. Also, includes French language e-books.'
     actual_plugin = 'calibre.gui2.store.stores.amazon_uk_plugin:AmazonKindleStore'
 
     headquarters = 'UK'
     formats = ['KINDLE']
+
 
 class StoreArchiveOrgStore(StoreBase):
     name = 'Archive.org'
@@ -1354,6 +1453,7 @@ class StoreArchiveOrgStore(StoreBase):
     headquarters = 'US'
     formats = ['DAISY', 'DJVU', 'EPUB', 'MOBI', 'PDF', 'TXT']
 
+
 class StoreBubokPublishingStore(StoreBase):
     name = 'Bubok Spain'
     description = u'Bubok Publishing is a publisher, library and store of books of authors from all around the world. They have a big amount of books of a lot of topics'  # noqa
@@ -1362,6 +1462,7 @@ class StoreBubokPublishingStore(StoreBase):
     drm_free_only = True
     headquarters = 'ES'
     formats = ['EPUB', 'PDF']
+
 
 class StoreBubokPortugalStore(StoreBase):
     name = 'Bubok Portugal'
@@ -1372,6 +1473,7 @@ class StoreBubokPortugalStore(StoreBase):
     headquarters = 'PT'
     formats = ['EPUB', 'PDF']
 
+
 class StoreBaenWebScriptionStore(StoreBase):
     name = 'Baen Ebooks'
     description = u'Sci-Fi & Fantasy brought to you by Jim Baen.'
@@ -1381,6 +1483,7 @@ class StoreBaenWebScriptionStore(StoreBase):
     headquarters = 'US'
     formats = ['EPUB', 'LIT', 'LRF', 'MOBI', 'RB', 'RTF', 'ZIP']
 
+
 class StoreBNStore(StoreBase):
     name = 'Barnes and Noble'
     description = u'The world\'s largest book seller. As the ultimate destination for book lovers, Barnes & Noble.com offers an incredible array of content.'
@@ -1389,16 +1492,18 @@ class StoreBNStore(StoreBase):
     headquarters = 'US'
     formats = ['NOOK']
 
+
 class StoreBeamEBooksDEStore(StoreBase):
     name = 'Beam EBooks DE'
     author = 'Charles Haley'
-    description = u'Bei uns finden Sie: Tausende deutschsprachige eBooks; Alle eBooks ohne hartes DRM; PDF, ePub und Mobipocket Format; Sofortige Verfügbarkeit - 24 Stunden am Tag; Günstige Preise; eBooks für viele Lesegeräte, PC,Mac und Smartphones; Viele Gratis eBooks'  # noqa
+    description = u'Bei uns finden Sie: Tausende deutschsprachige e-books; Alle e-books ohne hartes DRM; PDF, ePub und Mobipocket Format; Sofortige Verfügbarkeit - 24 Stunden am Tag; Günstige Preise; e-books für viele Lesegeräte, PC,Mac und Smartphones; Viele Gratis e-books'  # noqa
     actual_plugin = 'calibre.gui2.store.stores.beam_ebooks_de_plugin:BeamEBooksDEStore'
 
     drm_free_only = True
     headquarters = 'DE'
     formats = ['EPUB', 'MOBI', 'PDF']
     affiliate = True
+
 
 class StoreBiblioStore(StoreBase):
     name = u'Библио.бг'
@@ -1409,16 +1514,6 @@ class StoreBiblioStore(StoreBase):
     headquarters = 'BG'
     formats = ['EPUB, PDF']
 
-class StoreCdpStore(StoreBase):
-    name = 'Cdp.pl'
-    author = u'Tomasz Długosz'
-    description = u'Ebooki w wielu formatach zabezpieczone znakiem wodnym RuneMark'
-    actual_plugin = 'calibre.gui2.store.stores.cdp_plugin:CdpStore'
-
-    drm_free_only = True
-    headquarters = 'PL'
-    formats = ['EPUB', 'MOBI', 'PDF']
-    affiliate = True
 
 class StoreChitankaStore(StoreBase):
     name = u'Моята библиотека'
@@ -1430,6 +1525,7 @@ class StoreChitankaStore(StoreBase):
     headquarters = 'BG'
     formats = ['FB2', 'EPUB', 'TXT', 'SFB']
 
+
 class StoreEbookNLStore(StoreBase):
     name = 'eBook.nl'
     description = u'De eBookwinkel van Nederland'
@@ -1439,16 +1535,18 @@ class StoreEbookNLStore(StoreBase):
     formats = ['EPUB', 'PDF']
     affiliate = False
 
+
 class StoreEbookpointStore(StoreBase):
     name = 'Ebookpoint'
     author = u'Tomasz Długosz'
-    description = u'Ebooki wolne od DRM, 3 formaty w pakiecie, wysyłanie na Kindle'
+    description = u'E-booki wolne od DRM, 3 formaty w pakiecie, wysyłanie na Kindle'
     actual_plugin = 'calibre.gui2.store.stores.ebookpoint_plugin:EbookpointStore'
 
     drm_free_only = True
     headquarters = 'PL'
     formats = ['EPUB', 'MOBI', 'PDF']
     affiliate = True
+
 
 class StoreEbookscomStore(StoreBase):
     name = 'eBooks.com'
@@ -1458,6 +1556,7 @@ class StoreEbookscomStore(StoreBase):
     headquarters = 'US'
     formats = ['EPUB', 'LIT', 'MOBI', 'PDF']
     affiliate = True
+
 
 class StoreEbooksGratuitsStore(StoreBase):
     name = 'EbooksGratuits.com'
@@ -1478,6 +1577,7 @@ class StoreEbooksGratuitsStore(StoreBase):
 #     formats = ['EPUB', 'PDF']
 #     affiliate = True
 
+
 class StoreEKnigiStore(StoreBase):
     name = u'еКниги'
     author = 'Alex Stanev'
@@ -1487,6 +1587,7 @@ class StoreEKnigiStore(StoreBase):
     headquarters = 'BG'
     formats = ['EPUB', 'PDF', 'HTML']
     affiliate = True
+
 
 class StoreEmpikStore(StoreBase):
     name = 'Empik'
@@ -1498,6 +1599,7 @@ class StoreEmpikStore(StoreBase):
     formats = ['EPUB', 'MOBI', 'PDF']
     affiliate = True
 
+
 class StoreFeedbooksStore(StoreBase):
     name = 'Feedbooks'
     description = u'Feedbooks is a cloud publishing and distribution service, connected to a large ecosystem of reading systems and social networks. Provides a variety of genres from independent and classic books.'  # noqa
@@ -1505,6 +1607,7 @@ class StoreFeedbooksStore(StoreBase):
 
     headquarters = 'FR'
     formats = ['EPUB', 'MOBI', 'PDF']
+
 
 class StoreGoogleBooksStore(StoreBase):
     name = 'Google Books'
@@ -1514,44 +1617,37 @@ class StoreGoogleBooksStore(StoreBase):
     headquarters = 'US'
     formats = ['EPUB', 'PDF', 'TXT']
 
+
 class StoreGutenbergStore(StoreBase):
     name = 'Project Gutenberg'
-    description = u'The first producer of free ebooks. Free in the United States because their copyright has expired. They may not be free of copyright in other countries. Readers outside of the United States must check the copyright laws of their countries before downloading or redistributing our ebooks.'  # noqa
+    description = u'The first producer of free e-books. Free in the United States because their copyright has expired. They may not be free of copyright in other countries. Readers outside of the United States must check the copyright laws of their countries before downloading or redistributing our e-books.'  # noqa
     actual_plugin = 'calibre.gui2.store.stores.gutenberg_plugin:GutenbergStore'
 
     drm_free_only = True
     headquarters = 'US'
     formats = ['EPUB', 'HTML', 'MOBI', 'PDB', 'TXT']
 
+
 class StoreKoboStore(StoreBase):
     name = 'Kobo'
-    description = u'With over 2.3 million eBooks to browse we have engaged readers in over 200 countries in Kobo eReading. Our eBook listings include New York Times Bestsellers, award winners, classics and more!'  # noqa
+    description = u'With over 2.3 million e-books to browse we have engaged readers in over 200 countries in Kobo eReading. Our e-book listings include New York Times Bestsellers, award winners, classics and more!'  # noqa
     actual_plugin = 'calibre.gui2.store.stores.kobo_plugin:KoboStore'
 
     headquarters = 'CA'
     formats = ['EPUB']
     affiliate = True
 
-class StoreKoobeStore(StoreBase):
-    name = 'Koobe'
-    author = u'Tomasz Długosz'
-    description = u'Księgarnia internetowa oferuje ebooki (książki elektroniczne) w postaci plików epub, mobi i pdf.'
-    actual_plugin = 'calibre.gui2.store.stores.koobe_plugin:KoobeStore'
-
-    drm_free_only = True
-    headquarters = 'PL'
-    formats = ['EPUB', 'MOBI', 'PDF']
-    affiliate = True
 
 class StoreLegimiStore(StoreBase):
     name = 'Legimi'
     author = u'Tomasz Długosz'
-    description = u'Ebooki w formacie EPUB, MOBI i PDF'
+    description = u'E-booki w formacie EPUB, MOBI i PDF'
     actual_plugin = 'calibre.gui2.store.stores.legimi_plugin:LegimiStore'
 
     headquarters = 'PL'
     formats = ['EPUB', 'PDF', 'MOBI']
     affiliate = True
+
 
 class StoreLibreDEStore(StoreBase):
     name = 'ebook.de'
@@ -1563,9 +1659,10 @@ class StoreLibreDEStore(StoreBase):
     formats = ['EPUB', 'PDF']
     affiliate = True
 
+
 class StoreLitResStore(StoreBase):
     name = 'LitRes'
-    description = u'ebooks from LitRes.ru'
+    description = u'e-books from LitRes.ru'
     actual_plugin = 'calibre.gui2.store.stores.litres_plugin:LitResStore'
     author = 'Roman Mukhin'
 
@@ -1573,6 +1670,7 @@ class StoreLitResStore(StoreBase):
     headquarters = 'RU'
     formats = ['EPUB', 'TXT', 'RTF', 'HTML', 'FB2', 'LRF', 'PDF', 'MOBI', 'LIT', 'ISILO3', 'JAR', 'RB', 'PRC']
     affiliate = True
+
 
 class StoreManyBooksStore(StoreBase):
     name = 'ManyBooks'
@@ -1582,6 +1680,7 @@ class StoreManyBooksStore(StoreBase):
     drm_free_only = True
     headquarters = 'US'
     formats = ['EPUB', 'FB2', 'JAR', 'LIT', 'LRF', 'MOBI', 'PDB', 'PDF', 'RB', 'RTF', 'TCR', 'TXT', 'ZIP']
+
 
 class StoreMillsBoonUKStore(StoreBase):
     name = 'Mills and Boon UK'
@@ -1593,14 +1692,16 @@ class StoreMillsBoonUKStore(StoreBase):
     formats = ['EPUB']
     affiliate = True
 
+
 class StoreMobileReadStore(StoreBase):
     name = 'MobileRead'
-    description = u'Ebooks handcrafted with the utmost care.'
+    description = u'E-books handcrafted with the utmost care.'
     actual_plugin = 'calibre.gui2.store.stores.mobileread.mobileread_plugin:MobileReadStore'
 
     drm_free_only = True
     headquarters = 'CH'
     formats = ['EPUB', 'IMP', 'LRF', 'LIT', 'MOBI', 'PDF']
+
 
 class StoreNextoStore(StoreBase):
     name = 'Nexto'
@@ -1612,26 +1713,19 @@ class StoreNextoStore(StoreBase):
     formats = ['EPUB', 'MOBI', 'PDF']
     affiliate = True
 
-class StoreNookUKStore(StoreBase):
-    name = 'Nook UK'
-    author = 'Charles Haley'
-    description = u'Barnes & Noble S.A.R.L, a subsidiary of Barnes & Noble, Inc., a leading retailer of content, digital media and educational products, is proud to bring the award-winning NOOK reading experience and a leading digital bookstore to the UK.'  # noqa
-    actual_plugin = 'calibre.gui2.store.stores.nook_uk_plugin:NookUKStore'
-
-    headquarters = 'UK'
-    formats = ['NOOK']
 
 class StoreOpenBooksStore(StoreBase):
     name = 'Open Books'
-    description = u'Comprehensive listing of DRM free ebooks from a variety of sources provided by users of calibre.'
+    description = u'Comprehensive listing of DRM free e-books from a variety of sources provided by users of calibre.'
     actual_plugin = 'calibre.gui2.store.stores.open_books_plugin:OpenBooksStore'
 
     drm_free_only = True
     headquarters = 'US'
 
+
 class StoreOzonRUStore(StoreBase):
     name = 'OZON.ru'
-    description = u'ebooks from OZON.ru'
+    description = u'e-books from OZON.ru'
     actual_plugin = 'calibre.gui2.store.stores.ozon_ru_plugin:OzonRUStore'
     author = 'Roman Mukhin'
 
@@ -1640,14 +1734,16 @@ class StoreOzonRUStore(StoreBase):
     formats = ['TXT', 'PDF', 'DJVU', 'RTF', 'DOC', 'JAR', 'FB2']
     affiliate = True
 
+
 class StorePragmaticBookshelfStore(StoreBase):
     name = 'Pragmatic Bookshelf'
-    description = u'The Pragmatic Bookshelf\'s collection of programming and tech books avaliable as ebooks.'
+    description = u'The Pragmatic Bookshelf\'s collection of programming and tech books avaliable as e-books.'
     actual_plugin = 'calibre.gui2.store.stores.pragmatic_bookshelf_plugin:PragmaticBookshelfStore'
 
     drm_free_only = True
     headquarters = 'US'
     formats = ['EPUB', 'MOBI', 'PDF']
+
 
 class StorePublioStore(StoreBase):
     name = 'Publio'
@@ -1659,9 +1755,10 @@ class StorePublioStore(StoreBase):
     formats = ['EPUB', 'MOBI', 'PDF']
     affiliate = True
 
+
 class StoreRW2010Store(StoreBase):
     name = 'RW2010'
-    description = u'Polski serwis self-publishingowy. Pliki PDF, EPUB i MOBI. Maksymalna cena utworu nie przekracza u nas 10 złotych!'
+    description = u'Polski serwis self-publishingowy. Pliki PDF, EPUB i MOBI.'
     actual_plugin = 'calibre.gui2.store.stores.rw2010_plugin:RW2010Store'
     author = u'Tomasz Długosz'
 
@@ -1669,15 +1766,29 @@ class StoreRW2010Store(StoreBase):
     headquarters = 'PL'
     formats = ['EPUB', 'MOBI', 'PDF']
 
+
 class StoreSmashwordsStore(StoreBase):
     name = 'Smashwords'
-    description = u'An ebook publishing and distribution platform for ebook authors, publishers and readers. Covers many genres and formats.'
+    description = u'An e-book publishing and distribution platform for e-book authors, publishers and readers. Covers many genres and formats.'
     actual_plugin = 'calibre.gui2.store.stores.smashwords_plugin:SmashwordsStore'
 
     drm_free_only = True
     headquarters = 'US'
     formats = ['EPUB', 'HTML', 'LRF', 'MOBI', 'PDB', 'RTF', 'TXT']
     affiliate = True
+
+
+class StoreSwiatEbookowStore(StoreBase):
+    name = u'Świat Ebooków'
+    author = u'Tomasz Długosz'
+    description = u'Ebooki maje tę zaletę, że są zawsze i wszędzie tam, gdzie tylko nas dopadnie ochota na czytanie.'
+    actual_plugin = 'calibre.gui2.store.stores.swiatebookow_plugin:SwiatEbookowStore'
+
+    drm_free_only = True
+    headquarters = 'PL'
+    formats = ['EPUB', 'MOBI', 'PDF']
+    affiliate = True
+
 
 class StoreVirtualoStore(StoreBase):
     name = 'Virtualo'
@@ -1689,24 +1800,16 @@ class StoreVirtualoStore(StoreBase):
     formats = ['EPUB', 'MOBI', 'PDF']
     affiliate = True
 
-class StoreWaterstonesUKStore(StoreBase):
-    name = 'Waterstones UK'
-    author = 'Charles Haley'
-    description = u'Waterstone\'s mission is to be the leading Bookseller on the High Street and online providing customers the widest choice, great value and expert advice from a team passionate about Bookselling.'  # noqa
-    actual_plugin = 'calibre.gui2.store.stores.waterstones_uk_plugin:WaterstonesUKStore'
-
-    headquarters = 'UK'
-    formats = ['EPUB', 'PDF']
-    affiliate = False
 
 class StoreWeightlessBooksStore(StoreBase):
     name = 'Weightless Books'
-    description = u'An independent DRM-free ebooksite devoted to ebooks of all sorts.'
+    description = u'An independent DRM-free e-book site devoted to e-books of all sorts.'
     actual_plugin = 'calibre.gui2.store.stores.weightless_books_plugin:WeightlessBooksStore'
 
     drm_free_only = True
     headquarters = 'US'
     formats = ['EPUB', 'HTML', 'LIT', 'MOBI', 'PDF']
+
 
 class StoreWHSmithUKStore(StoreBase):
     name = 'WH Smith UK'
@@ -1717,6 +1820,7 @@ class StoreWHSmithUKStore(StoreBase):
     headquarters = 'UK'
     formats = ['EPUB', 'PDF']
 
+
 class StoreWolneLekturyStore(StoreBase):
     name = 'Wolne Lektury'
     author = u'Tomasz Długosz'
@@ -1725,6 +1829,7 @@ class StoreWolneLekturyStore(StoreBase):
 
     headquarters = 'PL'
     formats = ['EPUB', 'MOBI', 'PDF', 'TXT', 'FB2']
+
 
 class StoreWoblinkStore(StoreBase):
     name = 'Woblink'
@@ -1736,6 +1841,7 @@ class StoreWoblinkStore(StoreBase):
     formats = ['EPUB', 'MOBI', 'PDF', 'WOBLINK']
     affiliate = True
 
+
 class XinXiiStore(StoreBase):
     name = 'XinXii'
     description = ''
@@ -1743,6 +1849,7 @@ class XinXiiStore(StoreBase):
 
     headquarters = 'DE'
     formats = ['EPUB', 'PDF']
+
 
 plugins += [
     StoreArchiveOrgStore,
@@ -1762,7 +1869,6 @@ plugins += [
     StoreBeamEBooksDEStore,
     StoreBiblioStore,
     StoreChitankaStore,
-    StoreCdpStore,
     StoreEbookNLStore,
     StoreEbookpointStore,
     StoreEbookscomStore,
@@ -1773,7 +1879,6 @@ plugins += [
     StoreGoogleBooksStore,
     StoreGutenbergStore,
     StoreKoboStore,
-    StoreKoobeStore,
     StoreLegimiStore,
     StoreLibreDEStore,
     StoreLitResStore,
@@ -1781,16 +1886,14 @@ plugins += [
     StoreMillsBoonUKStore,
     StoreMobileReadStore,
     StoreNextoStore,
-    StoreNookUKStore,
     StoreOpenBooksStore,
     StoreOzonRUStore,
     StorePragmaticBookshelfStore,
     StorePublioStore,
     StoreRW2010Store,
     StoreSmashwordsStore,
-    StoreSonyStore, StoreSonyAUStore,
+    StoreSwiatEbookowStore,
     StoreVirtualoStore,
-    StoreWaterstonesUKStore,
     StoreWeightlessBooksStore,
     StoreWHSmithUKStore,
     StoreWolneLekturyStore,
@@ -1836,7 +1939,7 @@ if __name__ == '__main__':
         ret = 0
 
         for x in ('lxml', 'calibre.ebooks.BeautifulSoup', 'uuid',
-            'calibre.utils.terminal', 'calibre.utils.magick', 'PIL', 'Image',
+            'calibre.utils.terminal', 'calibre.utils.img', 'PIL', 'Image',
             'sqlite3', 'mechanize', 'httplib', 'xml', 'inspect', 'urllib',
             'calibre.utils.date', 'calibre.utils.config', 'platform',
             'calibre.utils.zipfile', 'calibre.utils.formatter',
@@ -1854,4 +1957,3 @@ if __name__ == '__main__':
         ''')])
     except subprocess.CalledProcessError:
         raise SystemExit(1)
-

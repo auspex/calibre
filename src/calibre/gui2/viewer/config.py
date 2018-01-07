@@ -14,7 +14,7 @@ from PyQt5.Qt import (
     QFont, QDialog, Qt, QColor, QColorDialog, QMenu, QInputDialog,
     QListWidgetItem, QFormLayout, QLabel, QLineEdit, QDialogButtonBox)
 
-from calibre.constants import iswindows, isxp
+from calibre.constants import isxp
 from calibre.utils.config import Config, StringConfig, JSONConfig
 from calibre.utils.icu import sort_key
 from calibre.utils.localization import get_language, calibre_langcode_to_name
@@ -23,8 +23,9 @@ from calibre.gui2.languages import LanguagesEdit
 from calibre.gui2.shortcuts import ShortcutConfig
 from calibre.gui2.viewer.config_ui import Ui_Dialog
 
+
 def config(defaults=None):
-    desc = _('Options to customize the ebook viewer')
+    desc = _('Options to customize the e-book viewer')
     if defaults is None:
         c = Config('viewer', desc)
     else:
@@ -52,7 +53,7 @@ def config(defaults=None):
     c.add_opt('remember_current_page', default=True,
             help=_('Save the current position in the document, when quitting'))
     c.add_opt('copy_bookmarks_to_file', default=True,
-            help=_('Copy bookmarks to the ebook file for easy sharing, if possible'))
+            help=_('Copy bookmarks to the e-book file for easy sharing, if possible'))
     c.add_opt('wheel_flips_pages', default=False,
             help=_('Have the mouse wheel turn pages'))
     c.add_opt('wheel_scroll_fraction', default=100,
@@ -94,14 +95,14 @@ def config(defaults=None):
     c.add_opt('show_controls', default=True)
 
     fonts = c.add_group('FONTS', _('Font options'))
-    fonts('serif_family', default='Times New Roman' if iswindows else 'Liberation Serif',
+    fonts('serif_family', default='Liberation Serif',
           help=_('The serif font family'))
-    fonts('sans_family', default='Verdana' if iswindows else 'Liberation Sans',
+    fonts('sans_family', default='Liberation Sans',
           help=_('The sans-serif font family'))
-    fonts('mono_family', default='Courier New' if iswindows else 'Liberation Mono',
-          help=_('The monospaced font family'))
+    fonts('mono_family', default='Liberation Mono',
+          help=_('The monospace font family'))
     fonts('default_font_size', default=20, help=_('The standard font size in px'))
-    fonts('mono_font_size', default=16, help=_('The monospaced font size in px'))
+    fonts('mono_font_size', default=16, help=_('The monospace font size in px'))
     fonts('standard_font', default='serif', help=_('The standard font type'))
     fonts('minimum_font_size', default=8, help=_('The minimum font size in px'))
 
@@ -116,8 +117,10 @@ def config(defaults=None):
 
     return c
 
+
 def load_themes():
     return JSONConfig('viewer_themes')
+
 
 class ConfigDialog(QDialog, Ui_Dialog):
 
@@ -140,7 +143,15 @@ class ConfigDialog(QDialog, Ui_Dialog):
         with zipfile.ZipFile(P('viewer/hyphenate/patterns.zip',
             allow_user_override=False), 'r') as zf:
             pats = [x.split('.')[0].replace('-', '_') for x in zf.namelist()]
-        names = list(map(get_language, pats))
+
+        lang_pats = {
+            'el_monoton': get_language('el').partition(';')[0] + _(' monotone'), 'el_polyton':get_language('el').partition(';')[0] + _(' polytone'),
+            'sr_cyrl': get_language('sr') + _(' cyrillic'), 'sr_latn': get_language('sr') + _(' latin'),
+        }
+
+        def gl(pat):
+            return lang_pats.get(pat, get_language(pat))
+        names = list(map(gl, pats))
         pmap = {}
         for i in range(len(pats)):
             pmap[names[i]] = pats[i]
@@ -228,6 +239,7 @@ class ConfigDialog(QDialog, Ui_Dialog):
     def word_lookups(self):
         def fget(self):
             return dict(self.dictionary_list.item(i).data(Qt.UserRole) for i in range(self.dictionary_list.count()))
+
         def fset(self, wl):
             self.dictionary_list.clear()
             for langcode, url in sorted(wl.iteritems(), key=lambda (lc, url):sort_key(calibre_langcode_to_name(lc))):

@@ -1,12 +1,13 @@
 //Define the SIP wrapper to the imageops code
 //Author - Kovid Goyal <kovid@kovidgoyal.net>
 
-%Module(name=imageops, version=1)
+%Module(name=imageops)
 
 %Import QtCore/QtCoremod.sip
 %Import QtGui/QtGuimod.sip
 %ModuleCode
 #include <imageops.h>
+#include <stdexcept>
 #define IMAGEOPS_PREFIX \
             if (a0->isNull()) { PyErr_SetString(PyExc_ValueError, "Cannot operate on null QImage"); return NULL; } \
             try {
@@ -72,9 +73,30 @@ QImage oil_paint(const QImage &image, const float radius=-1, const bool high_qua
 			sipRes = new QImage(oil_paint(*a0, a1, a2));
         IMAGEOPS_SUFFIX
 %End
-QImage quantize(const QImage &image, unsigned int maximum_colors=256, bool dither=true);
+QImage quantize(const QImage &image, unsigned int maximum_colors, bool dither, const QVector<QRgb> &palette);
 %MethodCode
         IMAGEOPS_PREFIX
-			sipRes = new QImage(quantize(*a0, a1, a2));
+			sipRes = new QImage(quantize(*a0, a1, a2, *a3));
+        IMAGEOPS_SUFFIX
+%End
+
+bool has_transparent_pixels(const QImage &image);
+%MethodCode
+        IMAGEOPS_PREFIX
+			sipRes = has_transparent_pixels(*a0);
+        IMAGEOPS_SUFFIX
+%End
+
+QImage set_opacity(const QImage &image, double alpha);
+%MethodCode
+        IMAGEOPS_PREFIX
+			sipRes = new QImage(set_opacity(*a0, a1));
+        IMAGEOPS_SUFFIX
+%End
+
+QImage texture_image(const QImage &image, const QImage &texturei);
+%MethodCode
+        IMAGEOPS_PREFIX
+			sipRes = new QImage(texture_image(*a0, *a1));
         IMAGEOPS_SUFFIX
 %End

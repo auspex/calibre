@@ -11,9 +11,10 @@ from calibre.gui2 import gprefs
 from calibre.gui2.catalog.catalog_bibtex_ui import Ui_Form
 from PyQt5.Qt import QWidget, QListWidgetItem
 
+
 class PluginWidget(QWidget, Ui_Form):
 
-    TITLE = _('BibTeX Options')
+    TITLE = _('BibTeX options')
     HELP  = _('Options specific to')+' BibTeX '+_('output')
     OPTION_FIELDS = [('bib_cit','{authors}{id}'),
                      ('bib_entry', 0),  # mixed

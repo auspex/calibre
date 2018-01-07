@@ -32,6 +32,7 @@ from calibre import guess_type, xml_replace_entities
 
 __all__ = ['OEBReader']
 
+
 class OEBReader(object):
     """Read an OEBPS 1.x or OPF/OPS 2.0 file collection."""
 
@@ -136,7 +137,11 @@ class OEBReader(object):
         from calibre.ebooks.metadata.opf2 import OPF
         from calibre.ebooks.oeb.transforms.metadata import meta_info_to_oeb_metadata
         stream = cStringIO.StringIO(etree.tostring(opf, xml_declaration=True, encoding='utf-8'))
-        mi = OPF(stream).to_book_metadata()
+        o = OPF(stream)
+        pwm = o.primary_writing_mode
+        if pwm:
+            self.oeb.metadata.primary_writing_mode = pwm
+        mi = o.to_book_metadata()
         if not mi.language:
             mi.language = get_lang().replace('_', '-')
         self.oeb.metadata.add('language', mi.language)
@@ -395,6 +400,8 @@ class OEBReader(object):
                 continue
             href = item.abshref(urlnormalize(href[0])) if href and href[0] else ''
             path, _ = urldefrag(href)
+            if path and path not in self.oeb.manifest.hrefs:
+                path = urlnormalize(path)
             if href and path not in self.oeb.manifest.hrefs:
                 self.logger.warn('TOC reference %r not found' % href)
                 gc = xpath(child, 'ncx:navPoint')
@@ -711,6 +718,7 @@ def main(argv=sys.argv):
         for name, doc in oeb.to_opf2(page_map=True).values():
             print etree.tostring(doc, pretty_print=True)
     return 0
+
 
 if __name__ == '__main__':
     sys.exit(main())

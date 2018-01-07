@@ -27,6 +27,7 @@ if iswindows and hasattr(sys, 'frozen'):
 if (islinux or isbsd) and getattr(sys, 'frozen', False):
     PDFTOHTML = os.path.join(sys.executables_location, 'bin', 'pdftohtml')
 
+
 def pdftohtml(output_dir, pdf_path, no_images, as_xml=False):
     '''
     Convert the pdf into html using the pdftohtml app.
@@ -55,7 +56,7 @@ def pdftohtml(output_dir, pdf_path, no_images, as_xml=False):
                 unicode) else PDFTOHTML
 
         cmd = [exe, b'-enc', b'UTF-8', b'-noframes', b'-p', b'-nomerge',
-                b'-nodrm', b'-q', a(pdfsrc), a(index)]
+                b'-nodrm', a(pdfsrc), a(index)]
 
         if isbsd:
             cmd.remove(b'-nodrm')
@@ -96,7 +97,7 @@ def pdftohtml(output_dir, pdf_path, no_images, as_xml=False):
             raise DRMError()
 
         if not as_xml:
-            with open(index, 'r+b') as i:
+            with lopen(index, 'r+b') as i:
                 raw = i.read()
                 raw = flip_images(raw)
                 raw = '<!-- created by calibre\'s pdftohtml -->\n' + raw
@@ -106,6 +107,9 @@ def pdftohtml(output_dir, pdf_path, no_images, as_xml=False):
                 # breaks the pdf heuristics regexps, so replace them
                 raw = raw.replace(b'<br/>', b'<br>')
                 raw = re.sub(br'<a\s+name=(\d+)', br'<a id="\1"', raw, flags=re.I)
+                raw = re.sub(br'<a id="(\d+)"', br'<a id="p\1"', raw, flags=re.I)
+                raw = re.sub(br'<a href="index.html#(\d+)"', br'<a href="#p\1"', raw, flags=re.I)
+
                 i.write(raw)
 
             cmd = [exe, b'-f', b'1', '-l', '1', b'-xml', b'-i', b'-enc', b'UTF-8', b'-noframes', b'-p', b'-nomerge',
@@ -123,6 +127,7 @@ def pdftohtml(output_dir, pdf_path, no_images, as_xml=False):
         except:
             pass
 
+
 def parse_outline(raw, output_dir):
     from lxml import etree
     from calibre.ebooks.oeb.parse_utils import RECOVER_PARSER
@@ -135,14 +140,15 @@ def parse_outline(raw, output_dir):
         count = [0]
 
         def process_node(node, toc):
-            for child in node.iterdescendants('*'):
+            for child in node.iterchildren('*'):
                 if child.tag == 'outline':
                     parent = toc.children[-1] if toc.children else toc
                     process_node(child, parent)
                 else:
-                    page = child.get('page', '1')
-                    toc.add(child.text, 'index.html', page)
-                    count[0] += 1
+                    if child.text:
+                        page = child.get('page', '1')
+                        toc.add(child.text, 'index.html', 'p' + page)
+                        count[0] += 1
         process_node(outline, toc)
         if count[0] > 2:
             root = create_ncx(toc, (lambda x:x), 'pdftohtml', 'en', 'pdftohtml')
@@ -157,6 +163,7 @@ def flip_image(img, flip):
         img = flip_image(img, horizontal=b'x' in flip, vertical=b'y' in flip)
         f.seek(0), f.truncate()
         f.write(image_to_data(img, fmt=fmt))
+
 
 def flip_images(raw):
     for match in re.finditer(b'<IMG[^>]+/?>', raw, flags=re.I):

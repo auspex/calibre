@@ -5,7 +5,8 @@
 *.log
 .*
 *.pyj-cached
-.check-cache.pickle
+.build-cache
+.cache
 src/calibre/plugins
 resources/images.qrc
 manual/generated
@@ -21,10 +22,12 @@ resources/template-functions.json
 resources/editor-functions.json
 resources/user-manual-translation-stats.json
 resources/content-server/index-generated.html
+resources/content-server/calibre.appcache
 resources/content-server/locales.zip
 resources/content-server/mathjax.zip.xz
 resources/content-server/mathjax.version
 resources/mozilla-ca-certs.pem
+resources/user-agent-data.json
 icons/icns/*.iconset
 tags
 nbproject/

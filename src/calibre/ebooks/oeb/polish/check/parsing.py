@@ -26,6 +26,7 @@ ALL_ENTITIES = HTML_ENTITTIES | XML_ENTITIES
 replace_pat = re.compile('&(%s);' % '|'.join(re.escape(x) for x in sorted((HTML_ENTITTIES - XML_ENTITIES))))
 mismatch_pat = re.compile('tag mismatch:.+?line (\d+).+?line \d+')
 
+
 class EmptyFile(BaseError):
 
     HELP = _('This file is empty, it contains nothing, you should probably remove it.')
@@ -37,6 +38,7 @@ class EmptyFile(BaseError):
     def __call__(self, container):
         container.remove_item(self.name)
         return True
+
 
 class DecodeError(BaseError):
 
@@ -51,12 +53,13 @@ class DecodeError(BaseError):
     def __init__(self, name):
         BaseError.__init__(self, _('Parsing of %s failed, could not decode') % name, name)
 
+
 class XMLParseError(BaseError):
 
     is_parsing_error = True
 
     HELP = _('A parsing error in an XML file means that the XML syntax in the file is incorrect.'
-             ' Such a file will most probably not open in an ebook reader. These errors can '
+             ' Such a file will most probably not open in an e-book reader. These errors can '
              ' usually be fixed automatically, however, automatic fixing can sometimes '
              ' "do the wrong thing".')
 
@@ -68,12 +71,14 @@ class XMLParseError(BaseError):
             self.has_multiple_locations = True
             self.all_locations = [(self.name, int(m.group(1)), None), (self.name, self.line, self.col)]
 
+
 class HTMLParseError(XMLParseError):
 
     HELP = _('A parsing error in an HTML file means that the HTML syntax is incorrect.'
              ' Most readers will automatically ignore such errors, but they may result in '
              ' incorrect display of content. These errors can usually be fixed automatically,'
              ' however, automatic fixing can sometimes "do the wrong thing".')
+
 
 class NamedEntities(BaseError):
 
@@ -100,20 +105,27 @@ class NamedEntities(BaseError):
                         f.write(nraw.encode('utf-8'))
         return changed
 
+
+def make_filename_safe(name):
+    from calibre.utils.filenames import ascii_filename
+
+    def esc(n):
+        return ''.join(x if x in URL_SAFE else '_' for x in n)
+    return '/'.join(esc(ascii_filename(x)) for x in name.split('/'))
+
+
 class EscapedName(BaseError):
 
     level = WARN
 
     def __init__(self, name):
-        from calibre.utils.filenames import ascii_filename
         BaseError.__init__(self, _('Filename contains unsafe characters'), name)
         qname = urlquote(name)
-        def esc(n):
-            return ''.join(x if x in URL_SAFE else '_' for x in n)
-        self.sname = '/'.join(esc(ascii_filename(x)) for x in name.split('/'))
+
+        self.sname = make_filename_safe(name)
         self.HELP = _(
             'The filename {0} contains unsafe characters, that must be escaped, like'
-            ' this {1}. This can cause problems with some ebook readers. To be'
+            ' this {1}. This can cause problems with some e-book readers. To be'
             ' absolutely safe, use only the English alphabet [a-z], the numbers [0-9],'
             ' underscores and hyphens in your file names. While many other characters'
             ' are allowed, they may cause problems with some software.').format(name, qname)
@@ -131,15 +143,17 @@ class EscapedName(BaseError):
         rename_files(container, {self.name:self.sname})
         return True
 
+
 class TooLarge(BaseError):
 
     level = INFO
     MAX_SIZE = 260 *1024
     HELP = _('This HTML file is larger than %s. Too large HTML files can cause performance problems'
-             ' on some ebook readers. Consider splitting this file into smaller sections.') % human_readable(MAX_SIZE)
+             ' on some e-book readers. Consider splitting this file into smaller sections.') % human_readable(MAX_SIZE)
 
     def __init__(self, name):
         BaseError.__init__(self, _('File too large'), name)
+
 
 class BadEntity(BaseError):
 
@@ -148,6 +162,7 @@ class BadEntity(BaseError):
 
     def __init__(self, ent, name, lnum, col):
         BaseError.__init__(self, _('Invalid entity: %s') % ent, name, lnum, col)
+
 
 class BadNamespace(BaseError):
 
@@ -167,6 +182,7 @@ class BadNamespace(BaseError):
         container.dirty(self.name)
         return True
 
+
 class NonUTF8(BaseError):
 
     level = WARN
@@ -185,6 +201,7 @@ class NonUTF8(BaseError):
             if changed:
                 container.open(self.name, 'wb').write(raw.encode('utf-8'))
                 return True
+
 
 class EntitityProcessor(object):
 
@@ -219,13 +236,16 @@ class EntitityProcessor(object):
             self.bad_entities.append((m.start(), m.group()))
         return b' ' * len(m.group())
 
+
 def check_html_size(name, mt, raw):
     errors = []
     if len(raw) > TooLarge.MAX_SIZE:
         errors.append(TooLarge(name))
     return errors
 
+
 entity_pat = re.compile(br'&(#{0,1}[a-zA-Z0-9]{1,8});')
+
 
 def check_encoding_declarations(name, container):
     errors = []
@@ -233,6 +253,7 @@ def check_encoding_declarations(name, container):
     if enc is not None and enc.lower() != 'utf-8':
         errors.append(NonUTF8(name, enc))
     return errors
+
 
 def check_xml_parsing(name, mt, raw):
     if not raw:
@@ -271,6 +292,7 @@ def check_xml_parsing(name, mt, raw):
 
     return errors
 
+
 class CSSError(BaseError):
 
     is_parsing_error = True
@@ -304,7 +326,9 @@ class CSSError(BaseError):
                     elem.set('style', force_unicode(container.parse_css(raw, is_declaration=True).cssText, 'utf-8').replace('\n', ' '))
         return True
 
+
 pos_pats = (re.compile(r'\[(\d+):(\d+)'), re.compile(r'(\d+), (\d+)\)'))
+
 
 class DuplicateId(BaseError):
 
@@ -327,6 +351,7 @@ class DuplicateId(BaseError):
             e.attrib.pop('id')
         container.dirty(self.name)
         return True
+
 
 class InvalidId(BaseError):
 
@@ -356,6 +381,7 @@ class InvalidId(BaseError):
         if changed:
             replace_ids(container, {self.name:{self.invalid_id:newid}})
         return changed
+
 
 class BareTextInBody(BaseError):
 
@@ -388,6 +414,7 @@ class BareTextInBody(BaseError):
                         p.tail += '  '
         container.dirty(self.name)
         return True
+
 
 class ErrorHandler(object):
 
@@ -423,6 +450,7 @@ class ErrorHandler(object):
         self.__handle(WARN, *args)
     warning = warn
 
+
 def check_css_parsing(name, raw, line_offset=0, is_declaration=False):
     log = ErrorHandler(name)
     parser = cssutils.CSSParser(fetcher=lambda x: (None, None), log=log)
@@ -437,6 +465,7 @@ def check_css_parsing(name, raw, line_offset=0, is_declaration=False):
         err.line += line_offset
     return log.errors
 
+
 def check_filenames(container):
     errors = []
     all_names = set(container.name_path_map) - container.names_that_must_not_be_changed
@@ -445,7 +474,9 @@ def check_filenames(container):
             errors.append(EscapedName(name))
     return errors
 
+
 valid_id = re.compile(r'^[a-zA-Z][a-zA-Z0-9_:.-]*$')
+
 
 def check_ids(container):
     errors = []
@@ -467,6 +498,7 @@ def check_ids(container):
                     errors.append(InvalidId(name, elem.sourceline, eid))
             errors.extend(DuplicateId(name, eid, locs) for eid, locs in dups.iteritems())
     return errors
+
 
 def check_markup(container):
     errors = []

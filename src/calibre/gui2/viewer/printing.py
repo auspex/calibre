@@ -23,6 +23,7 @@ from calibre.utils.icu import numeric_sort_key
 from calibre.utils.ipc.simple_worker import start_pipe_worker
 from calibre.utils.filenames import expanduser
 
+
 class PrintDialog(Dialog):
 
     OUTPUT_NAME = 'print-to-pdf-choose-file'
@@ -79,7 +80,7 @@ class PrintDialog(Dialog):
         pnum.setChecked(vprefs.get('print-to-pdf-page-numbers', True))
         l.addRow(pnum)
 
-        self.show_file = sf = QCheckBox(_('Open PDF file after printing'), self)
+        self.show_file = sf = QCheckBox(_('&Open PDF file after printing'), self)
         sf.setChecked(vprefs.get('print-to-pdf-show-file', True))
         l.addRow(sf)
 
@@ -128,6 +129,7 @@ class PrintDialog(Dialog):
         self.save_used_values()
         return Dialog.accept(self)
 
+
 class DoPrint(Thread):
 
     daemon = True
@@ -154,16 +156,18 @@ class DoPrint(Thread):
             import traceback
             self.tb = traceback.format_exc()
 
+
 def do_print():
     data = cPickle.loads(sys.stdin.read())
-    args = ['ebook-convert', data['input'], data['output'], '--override-profile-size', '--paper-size', data['paper_size'], '--pdf-add-toc',
+    args = ['ebook-convert', data['input'], data['output'], '--paper-size', data['paper_size'], '--pdf-add-toc',
             '--disable-remove-fake-margins', '--disable-font-rescaling', '--page-breaks-before', '/', '--chapter-mark', 'none', '-vv']
     if data['page_numbers']:
         args.append('--pdf-page-numbers')
     for edge in 'left top right bottom'.split():
-        args.append('--margin-' + edge), args.append('%.1f' % (data['margin_' + edge] * 72))
+        args.append('--pdf-page-margin-' + edge), args.append('%.1f' % (data['margin_' + edge] * 72))
     from calibre.ebooks.conversion.cli import main
     main(args)
+
 
 class Printing(QProgressDialog):
 
@@ -200,6 +204,7 @@ class Printing(QProgressDialog):
         self.timer.stop()
         self.reject()
 
+
 def print_book(path_to_book, parent=None, book_title=None):
     book_title = book_title or os.path.splitext(os.path.basename(path_to_book))[0]
     d = PrintDialog(book_title, parent)
@@ -209,6 +214,7 @@ def print_book(path_to_book, parent=None, book_title=None):
         t = DoPrint(data)
         t.start()
         Printing(t, data['show_file'], parent).exec_()
+
 
 if __name__ == '__main__':
     app = Application([])

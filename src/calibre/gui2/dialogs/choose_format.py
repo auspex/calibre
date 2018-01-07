@@ -9,13 +9,14 @@ from PyQt5.Qt import (
 
 from calibre.gui2 import file_icon_provider
 
+
 class ChooseFormatDialog(QDialog):
 
     def __init__(self, window, msg, formats, show_open_with=False):
         QDialog.__init__(self, window)
         self.resize(507, 377)
         self.setWindowIcon(QIcon(I("mimetypes/unknown.png")))
-        self.setWindowTitle(_('Choose Format'))
+        self.setWindowTitle(_('Choose format'))
         self.l = l = QVBoxLayout(self)
         self.msg = QLabel(msg)
         l.addWidget(self.msg)
@@ -27,7 +28,7 @@ class ChooseFormatDialog(QDialog):
         h.setContentsMargins(0, 0, 0, 0)
         l.addLayout(h)
         if show_open_with:
-            self.owb = QPushButton(_('&Open With...'), self)
+            self.owb = QPushButton(_('&Open with...'), self)
             self.formats.currentRowChanged.connect(self.update_open_with_button)
             h.addWidget(self.owb)
             self.own = QMenu(self.owb.text())
@@ -59,11 +60,11 @@ class ChooseFormatDialog(QDialog):
         else:
             menu.addSeparator()
             menu.addAction(_('Add other application for %s files...') % fmt.upper(), self.choose_open_with)
-            menu.addAction(_('Edit Open With applications...'), partial(edit_programs, fmt, self))
+            menu.addAction(_('Edit "Open with" applications...'), partial(edit_programs, fmt, self))
 
     def update_open_with_button(self):
         fmt = self._formats[self.formats.currentRow()]
-        self.owb.setText(_('Open %s With...') % fmt)
+        self.owb.setText(_('Open %s with...') % fmt)
 
     def open_with(self, entry):
         self.open_with_format = (self._formats[self.formats.currentRow()], entry)
@@ -92,6 +93,7 @@ class ChooseFormatDialog(QDialog):
     def accept(self):
         self._format = self._formats[self.formats.currentRow()]
         return QDialog.accept(self)
+
 
 if __name__ == '__main__':
     from calibre.gui2 import Application

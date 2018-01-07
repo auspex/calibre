@@ -25,12 +25,14 @@ from calibre.utils.icu import numeric_sort_key as sort_key
 
 ENTRY_ROLE = Qt.UserRole
 
+
 def pixmap_to_data(pixmap):
     ba = QByteArray()
     buf = QBuffer(ba)
     buf.open(QBuffer.WriteOnly)
     pixmap.save(buf, 'PNG')
     return bytearray(ba.data())
+
 
 def run_program(entry, path, parent):
     import subprocess
@@ -48,6 +50,7 @@ def run_program(entry, path, parent):
     t.daemon = True
     t.start()
 
+
 def entry_to_icon_text(entry, only_text=False):
     if only_text:
         return entry.get('name', entry.get('Name')) or _('Unknown')
@@ -59,6 +62,7 @@ def entry_to_icon_text(entry, only_text=False):
         pmap.loadFromData(bytes(data))
         icon = QIcon(pmap)
     return icon, entry.get('name', entry.get('Name')) or _('Unknown')
+
 
 if iswindows:
     # Windows {{{
@@ -117,6 +121,7 @@ if iswindows:
         return cmdline.replace('%1', qpath)
 
     del run_program
+
     def run_program(entry, path, parent):  # noqa
         cmdline = entry_to_cmdline(entry, path)
         print('Running Open With commandline:', repr(entry['cmdline']), ' |==> ', repr(cmdline))
@@ -134,7 +139,7 @@ if iswindows:
     # }}}
 
 elif isosx:
-    # OS X {{{
+    # macOS {{{
     oprefs = JSONConfig('osx_open_with')
     from calibre.utils.open_with.osx import find_programs, get_icon, entry_to_cmdline, get_bundle_data
 
@@ -166,7 +171,7 @@ elif isosx:
                 app = get_bundle_data(ans)
                 if app is None:
                     return error_dialog(parent, _('Invalid Application'), _(
-                        '%s is not a valid OS X application bundle.') % ans, show=True)
+                        '%s is not a valid macOS application bundle.') % ans, show=True)
                 return app
             if not os.access(ans, os.X_OK):
                 error_dialog(parent, _('Cannot execute'), _(
@@ -213,9 +218,13 @@ else:
                 pmap = ic.pixmap(48, 48)
                 if not pmap.isNull():
                     entry['icon_data'] = pixmap_to_data(pmap)
-        entry['MimeType'] = tuple(entry['MimeType'])
+        try:
+            entry['MimeType'] = tuple(entry['MimeType'])
+        except KeyError:
+            entry['MimeType'] = ()
         return entry
 # }}}
+
 
 class ChooseProgram(Dialog):  # {{{
 
@@ -239,7 +248,8 @@ class ChooseProgram(Dialog):  # {{{
         self.pi = pi = ProgressIndicator(self, 256)
         l.addStretch(1), l.addWidget(pi, alignment=Qt.AlignHCenter), l.addSpacing(10)
         w.la = la = QLabel(_('Gathering data, please wait...'))
-        la.setStyleSheet('QLabel { font-size: 30pt; font-weight: bold }')
+        f = la.font()
+        f.setBold(True), f.setPointSize(28), la.setFont(f)
         l.addWidget(la, alignment=Qt.AlignHCenter), l.addStretch(1)
         s.addWidget(w)
 
@@ -294,7 +304,9 @@ class ChooseProgram(Dialog):  # {{{
         self.select_manually = True
         self.reject()
 
+
 oprefs.defaults['entries'] = {}
+
 
 def choose_program(file_type='jpeg', parent=None, prefs=oprefs):
     oft = file_type = file_type.lower()
@@ -314,6 +326,7 @@ def choose_program(file_type='jpeg', parent=None, prefs=oprefs):
         register_keyboard_shortcuts(finalize=True)
     return entry
 
+
 def populate_menu(menu, receiver, file_type):
     file_type = file_type.lower()
     for entry in oprefs['entries'].get(file_type, ()):
@@ -328,6 +341,7 @@ def populate_menu(menu, receiver, file_type):
     return menu
 
 # }}}
+
 
 class EditPrograms(Dialog):  # {{{
 
@@ -344,7 +358,7 @@ class EditPrograms(Dialog):  # {{{
         self.bb.clear(), self.bb.setStandardButtons(self.bb.Close)
         self.rb = b = self.bb.addButton(_('&Remove'), self.bb.ActionRole)
         b.clicked.connect(self.remove), b.setIcon(QIcon(I('list_remove.png')))
-        self.cb = b = self.bb.addButton(_('Change &Icon'), self.bb.ActionRole)
+        self.cb = b = self.bb.addButton(_('Change &icon'), self.bb.ActionRole)
         b.clicked.connect(self.change_icon), b.setIcon(QIcon(I('icon_choose.png')))
         l.addWidget(self.bb)
 
@@ -393,12 +407,15 @@ class EditPrograms(Dialog):  # {{{
         oprefs['entries'][self.file_type] = entries
         oprefs['entries'] = oprefs['entries']
 
+
 def edit_programs(file_type, parent):
     d = EditPrograms(file_type, parent)
     d.exec_()
 # }}}
 
+
 registered_shortcuts = {}
+
 
 def register_keyboard_shortcuts(gui=None, finalize=False):
     if gui is None:
@@ -424,6 +441,7 @@ def register_keyboard_shortcuts(gui=None, finalize=False):
             registered_shortcuts[unique_name] = ac
     if finalize:
         gui.keyboard.finalize()
+
 
 if __name__ == '__main__':
     from pprint import pprint

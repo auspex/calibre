@@ -12,9 +12,12 @@ from repr import repr
 from functools import partial
 from operator import itemgetter
 
+from calibre.library.field_metadata import fm_as_dict
 from calibre.db.tests.base import BaseTest
 
 # Utils {{{
+
+
 class ET(object):
 
     def __init__(self, func_name, args, kwargs={}, old=None, legacy=None):
@@ -32,6 +35,7 @@ class ET(object):
         self.retval = newres
         return newres
 
+
 def compare_argspecs(old, new, attr):
     # We dont compare the names of the non-keyword arguments as they are often
     # different and they dont affect the usage of the API.
@@ -40,6 +44,7 @@ def compare_argspecs(old, new, attr):
     ok = len(old.args) == len(new.args) and old.defaults == new.defaults and (num == 0 or old.args[-num:] == new.args[-num:])
     if not ok:
         raise AssertionError('The argspec for %s does not match. %r != %r' % (attr, old, new))
+
 
 def run_funcs(self, db, ndb, funcs):
     for func in funcs:
@@ -61,6 +66,7 @@ def run_funcs(self, db, ndb, funcs):
             self.assertEqual(res1, res2, 'The method: %s() returned different results for argument %s' % (meth, args))
 # }}}
 
+
 class LegacyTest(BaseTest):
 
     ''' Test the emulation of the legacy interface. '''
@@ -78,12 +84,13 @@ class LegacyTest(BaseTest):
             return x
 
         def get_props(db):
-            props = ('user_version', 'is_second_db', 'library_id', 'field_metadata',
+            props = ('user_version', 'is_second_db', 'library_id',
                     'custom_column_label_map', 'custom_column_num_map', 'library_path', 'dbpath')
             fprops = ('last_modified', )
             ans = {x:getattr(db, x) for x in props}
             ans.update({x:getattr(db, x)() for x in fprops})
             ans['all_ids'] = frozenset(db.all_ids())
+            ans['field_metadata'] = fm_as_dict(db.field_metadata)
             return to_unicode(ans)
 
         old = self.init_old()
@@ -253,6 +260,7 @@ class LegacyTest(BaseTest):
             for a in args:
                 self.assertEqual(fmt(getattr(db, meth)(*a)), fmt(getattr(ndb, meth)(*a)),
                                  'The method: %s() returned different results for argument %s' % (meth, a))
+
         def f(x, y):  # get_top_level_move_items is broken in the old db on case-insensitive file systems
             x.discard('metadata_db_prefs_backup.json')
             return x, y

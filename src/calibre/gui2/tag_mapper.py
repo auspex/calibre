@@ -16,7 +16,7 @@ from PyQt5.Qt import (
 )
 
 from calibre.ebooks.metadata.tag_mapper import map_tags, compile_pat
-from calibre.gui2 import error_dialog, elided_text, Application, question_dialog
+from calibre.gui2 import error_dialog, Application, question_dialog
 from calibre.gui2.ui import get_gui
 from calibre.gui2.widgets2 import Dialog
 from calibre.utils.config import JSONConfig
@@ -24,12 +24,21 @@ from calibre.utils.localization import localize_user_manual_link
 
 tag_maps = JSONConfig('tag-map-rules')
 
+
+def intelligent_strip(action, val):
+    ans = val.strip()
+    if not ans and action == 'split':
+        ans = ' '
+    return ans
+
+
 class QueryEdit(QLineEdit):
 
     def contextMenuEvent(self, ev):
         menu = self.createStandardContextMenu()
         self.parent().specialise_context_menu(menu)
         menu.exec_(ev.globalPos())
+
 
 class RuleEdit(QWidget):
 
@@ -92,7 +101,7 @@ class RuleEdit(QWidget):
         h.addWidget(q)
         self.tag_editor_button = b = QToolButton(self)
         b.setIcon(QIcon(I('chapters.png')))
-        b.setToolTip(_('Edit the list of tags with the tag editor'))
+        b.setToolTip(_('Edit the list of tags with the Tag editor'))
         h.addWidget(b), b.clicked.connect(self.edit_tags)
         b.setVisible(self.can_use_tag_editor)
         self.h2 = h = QHBoxLayout()
@@ -102,7 +111,7 @@ class RuleEdit(QWidget):
         self.replace = r = QLineEdit(self)
         h.addWidget(r)
         self.regex_help = la = QLabel('<p>' + self.REGEXP_HELP_TEXT % localize_user_manual_link(
-        'http://manual.calibre-ebook.com/regexp.html'))
+        'https://manual.calibre-ebook.com/regexp.html'))
         la.setOpenExternalLinks(True)
         la.setWordWrap(True)
         l.addWidget(la)
@@ -141,7 +150,7 @@ class RuleEdit(QWidget):
 
     def specialise_context_menu(self, menu):
         if self.can_use_tag_editor:
-            menu.addAction(_('Use the tag editor to edit the list of tags'), self.edit_tags)
+            menu.addAction(_('Use the Tag editor to edit the list of tags'), self.edit_tags)
 
     def edit_tags(self):
         from calibre.gui2.dialogs.tag_editor import TagEditor
@@ -151,11 +160,12 @@ class RuleEdit(QWidget):
 
     @property
     def rule(self):
+        ac = self.action.currentData()
         return {
-            'action': self.action.currentData(),
+            'action': ac,
             'match_type': self.match_type.currentData(),
-            'query': self.query.text().strip(),
-            'replace': self.replace.text().strip(),
+            'query': intelligent_strip(ac, self.query.text()),
+            'replace': intelligent_strip(ac, self.replace.text()),
         }
 
     @rule.setter
@@ -167,8 +177,9 @@ class RuleEdit(QWidget):
                 idx = 0
             c.setCurrentIndex(idx)
         sc('action'), sc('match_type')
-        self.query.setText(unicode(rule.get('query', '')).strip())
-        self.replace.setText(unicode(rule.get('replace', '')).strip())
+        ac = self.action.currentData()
+        self.query.setText(intelligent_strip(ac, unicode(rule.get('query', ''))))
+        self.replace.setText(intelligent_strip(ac, unicode(rule.get('replace', ''))))
 
     def validate(self):
         rule = self.rule
@@ -183,6 +194,7 @@ class RuleEdit(QWidget):
                     '%s is not a valid regular expression') % rule['query'], show=True)
                 return False
         return True
+
 
 class RuleEditDialog(Dialog):
 
@@ -203,14 +215,16 @@ class RuleEditDialog(Dialog):
         if self.edit_widget.validate():
             Dialog.accept(self)
 
+
 DATA_ROLE = Qt.UserRole
 RENDER_ROLE = DATA_ROLE + 1
+
 
 class RuleItem(QListWidgetItem):
 
     @staticmethod
     def text_from_rule(rule, parent):
-        query = elided_text(rule['query'], font=parent.font(), width=200, pos='right')
+        query = rule['query']
         text = _(
             '<b>{action}</b> the tag, if it <i>{match_type}</i>: <b>{query}</b>').format(
                 action=RuleEdit.ACTION_MAP[rule['action']], match_type=RuleEdit.MATCH_TYPE_MAP[rule['match_type']], query=query)
@@ -218,13 +232,14 @@ class RuleItem(QListWidgetItem):
             text += '<br>' + _('with the tag:') + ' <b>%s</b>' % rule['replace']
         if rule['action'] == 'split':
             text += '<br>' + _('on the character:') + ' <b>%s</b>' % rule['replace']
-        return text
+        return '<div style="white-space: nowrap">' + text + '</div>'
 
     def __init__(self, rule, parent):
         QListWidgetItem.__init__(self, '', parent)
         st = self.text_from_rule(rule, parent)
         self.setData(RENDER_ROLE, st)
         self.setData(DATA_ROLE, rule)
+
 
 class Delegate(QStyledItemDelegate):
 
@@ -237,7 +252,7 @@ class Delegate(QStyledItemDelegate):
         if width and width != st.textWidth():
             st.setTextWidth(width)
         br = st.size()
-        return QSize(br.width(), br.height() + self.MARGIN)
+        return QSize(br.width() + self.MARGIN, br.height() + self.MARGIN)
 
     def paint(self, painter, option, index):
         QStyledItemDelegate.paint(self, painter, option, index)
@@ -255,7 +270,7 @@ class Rules(QWidget):
     RuleEditDialogClass = RuleEditDialog
     changed = pyqtSignal()
 
-    MSG = _('You can specify rules to filter/transform tags here. Click the "Add Rule" button'
+    MSG = _('You can specify rules to filter/transform tags here. Click the "Add rule" button'
             ' below to get started. The rules will be processed in order for every tag until either a'
             ' "remove" or a "keep" rule matches.')
 
@@ -364,12 +379,13 @@ class Rules(QWidget):
             if 'action' in rule and 'match_type' in rule and 'query' in rule:
                 self.RuleItemClass(rule, self.rule_list)
 
+
 class Tester(Dialog):
 
     DIALOG_TITLE = _('Test tag mapper rules')
     PREFS_NAME = 'test-tag-mapper-rules'
     LABEL = _('Enter a comma separated list of &tags to test:')
-    PLACEHOLDER = _('Enter tags and click the Test button')
+    PLACEHOLDER = _('Enter tags and click the "Test" button')
     EMPTY_RESULT = '<p>&nbsp;<br>&nbsp;</p>'
 
     def __init__(self, rules, parent=None):
@@ -409,6 +425,7 @@ class Tester(Dialog):
         ans = Dialog.sizeHint(self)
         ans.setWidth(ans.width() + 150)
         return ans
+
 
 class SaveLoadMixin(object):
 
@@ -452,6 +469,7 @@ class SaveLoadMixin(object):
         del self.PREFS_OBJECT[name]
         self.build_load_menu()
 
+
 class RulesDialog(Dialog, SaveLoadMixin):
 
     DIALOG_TITLE = _('Edit tag mapper rules')
@@ -491,12 +509,13 @@ class RulesDialog(Dialog, SaveLoadMixin):
     def test_rules(self):
         self.TesterClass(self.rules, self).exec_()
 
+
 if __name__ == '__main__':
     app = Application([])
     d = RulesDialog()
     d.rules = [
         {'action':'remove', 'query':'moose', 'match_type':'one_of', 'replace':''},
-        {'action':'replace', 'query':'moose', 'match_type':'one_of', 'replace':'xxxx'},
+        {'action':'replace', 'query':'moose,sfdg,sfdg,dfsg,dfgsh,sd,er,erg,egrer,ger,s,fgfsgfsga', 'match_type':'one_of', 'replace':'xxxx'},
         {'action':'split', 'query':'/', 'match_type':'has', 'replace':'/'},
     ]
     d.exec_()

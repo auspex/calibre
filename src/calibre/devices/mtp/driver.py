@@ -22,11 +22,13 @@ from calibre.utils.filenames import shorten_components_to
 BASE = importlib.import_module('calibre.devices.mtp.%s.driver'%(
     'windows' if iswindows else 'unix')).MTP_DEVICE
 
+
 class MTPInvalidSendPathError(PathError):
 
     def __init__(self, folder):
         PathError.__init__(self, 'Trying to send to ignored folder: %s'%folder)
         self.folder = folder
+
 
 class MTP_DEVICE(BASE):
 
@@ -62,7 +64,7 @@ class MTP_DEVICE(BASE):
             p.defaults['format_map'] = self.FORMATS
             p.defaults['send_to'] = ['Calibre_Companion', 'Books',
                     'eBooks/import', 'eBooks', 'wordplayer/calibretransfer',
-                    'sdcard/ebooks', 'kindle']
+                    'sdcard/ebooks', 'kindle', 'NOOK']
             p.defaults['send_template'] = '{title} - {authors}'
             p.defaults['blacklist'] = []
             p.defaults['history'] = {}
@@ -227,7 +229,7 @@ class MTP_DEVICE(BASE):
         steps = len(all_books) + 2
         count = 0
 
-        self.report_progress(0, _('Reading ebook metadata'))
+        self.report_progress(0, _('Reading e-book metadata'))
         # Read the cache if it exists
         storage = self.filesystem_cache.storage(sid)
         cache = storage.find_path(self.calibre_file_paths['metadata'].split('/'))
@@ -493,6 +495,7 @@ class MTP_DEVICE(BASE):
 
     def remove_books_from_metadata(self, paths, booklists):
         self.report_progress(0, _('Removing books from metadata'))
+
         class NextPath(Exception):
             pass
 
@@ -531,6 +534,7 @@ class MTP_DEVICE(BASE):
 
     def settings(self):
         class Opts(object):
+
             def __init__(s):
                 s.format_map = self.get_pref('format_map')
         return Opts()

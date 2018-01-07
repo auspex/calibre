@@ -7,9 +7,10 @@ __docformat__ = 'restructuredtext en'
 from calibre.gui2.convert.pdf_input_ui import Ui_Form
 from calibre.gui2.convert import Widget, QDoubleSpinBox
 
+
 class PluginWidget(Widget, Ui_Form):
 
-    TITLE = _('PDF Input')
+    TITLE = _('PDF input')
     HELP = _('Options specific to')+' PDF '+_('input')
     COMMIT_NAME = 'pdf_input'
     ICON = I('mimetypes/pdf.png')

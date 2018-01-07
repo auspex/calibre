@@ -10,14 +10,16 @@ from functools import partial
 from collections import defaultdict
 from copy import deepcopy
 
-from calibre.utils.lock import LockError, ExclusiveFile
+from calibre.utils.lock import ExclusiveFile
 from calibre.constants import config_dir, CONFIG_DIR_MODE
 
 plugin_dir = os.path.join(config_dir, 'plugins')
 
+
 def make_config_dir():
     if not os.path.exists(plugin_dir):
         os.makedirs(plugin_dir, mode=CONFIG_DIR_MODE)
+
 
 class Option(object):
 
@@ -52,10 +54,12 @@ class Option(object):
     def __str__(self):
         return repr(self)
 
+
 class OptionValues(object):
 
     def copy(self):
         return deepcopy(self)
+
 
 class OptionSet(object):
 
@@ -151,6 +155,8 @@ class OptionSet(object):
         for opt in self.preferences:
             if opt.help:
                 opt.help = t(opt.help)
+                if opt.name == 'use_primary_find_in_search':
+                    opt.help = opt.help.format(u'ñ')
 
     def option_parser(self, user_defaults=None, usage='', gui_mode=False):
         from calibre.utils.config import OptionParser
@@ -237,6 +243,7 @@ class OptionSet(object):
                                         for name in [None] + self.group_list]
         return src + '\n\n'.join(groups)
 
+
 class ConfigInterface(object):
 
     def __init__(self, description):
@@ -271,45 +278,37 @@ class Config(ConfigInterface):
     def parse(self):
         src = ''
         if os.path.exists(self.config_file_path):
-            try:
-                with ExclusiveFile(self.config_file_path) as f:
-                    try:
-                        src = f.read().decode('utf-8')
-                    except ValueError:
-                        print "Failed to parse", self.config_file_path
-                        traceback.print_exc()
-            except LockError:
-                raise IOError('Could not lock config file: %s'%self.config_file_path)
+            with ExclusiveFile(self.config_file_path) as f:
+                try:
+                    src = f.read().decode('utf-8')
+                except ValueError:
+                    print "Failed to parse", self.config_file_path
+                    traceback.print_exc()
         return self.option_set.parse_string(src)
 
     def as_string(self):
         if not os.path.exists(self.config_file_path):
             return ''
-        try:
-            with ExclusiveFile(self.config_file_path) as f:
-                return f.read().decode('utf-8')
-        except LockError:
-            raise IOError('Could not lock config file: %s'%self.config_file_path)
+        with ExclusiveFile(self.config_file_path) as f:
+            return f.read().decode('utf-8')
 
     def set(self, name, val):
         if not self.option_set.has_option(name):
             raise ValueError('The option %s is not defined.'%name)
-        try:
-            if not os.path.exists(config_dir):
-                make_config_dir()
-            with ExclusiveFile(self.config_file_path) as f:
-                src = f.read()
-                opts = self.option_set.parse_string(src)
-                setattr(opts, name, val)
-                footer = self.option_set.get_override_section(src)
-                src = self.option_set.serialize(opts)+ '\n\n' + footer + '\n'
-                f.seek(0)
-                f.truncate()
-                if isinstance(src, unicode):
-                    src = src.encode('utf-8')
-                f.write(src)
-        except LockError:
-            raise IOError('Could not lock config file: %s'%self.config_file_path)
+        if not os.path.exists(config_dir):
+            make_config_dir()
+        with ExclusiveFile(self.config_file_path) as f:
+            src = f.read()
+            opts = self.option_set.parse_string(src)
+            setattr(opts, name, val)
+            footer = self.option_set.get_override_section(src)
+            src = self.option_set.serialize(opts)+ '\n\n' + footer + '\n'
+            f.seek(0)
+            f.truncate()
+            if isinstance(src, unicode):
+                src = src.encode('utf-8')
+            f.write(src)
+
 
 class StringConfig(ConfigInterface):
     '''
@@ -330,6 +329,7 @@ class StringConfig(ConfigInterface):
         setattr(opts, name, val)
         footer = self.option_set.get_override_section(self.src)
         self.src = self.option_set.serialize(opts)+ '\n\n' + footer + '\n'
+
 
 class ConfigProxy(object):
     '''
@@ -390,7 +390,7 @@ def create_global_prefs(conf_obj=None):
     c.add_opt('language', default=None,
               help=_('The language in which to display the user interface'))
     c.add_opt('output_format', default='EPUB',
-              help=_('The default output format for ebook conversions.'))
+              help=_('The default output format for e-book conversions.'))
     c.add_opt('input_format_order', default=['EPUB', 'AZW3', 'MOBI', 'LIT', 'PRC',
         'FB2', 'HTML', 'HTM', 'XHTM', 'SHTML', 'XHTML', 'ZIP', 'DOCX', 'ODT', 'RTF', 'PDF',
         'TXT'],
@@ -416,7 +416,7 @@ def create_global_prefs(conf_obj=None):
     # these are here instead of the gui preferences because calibredb and
     # calibre server can execute searches
     c.add_opt('saved_searches', default={}, help=_('List of named saved searches'))
-    c.add_opt('user_categories', default={}, help=_('User-created tag browser categories'))
+    c.add_opt('user_categories', default={}, help=_('User-created Tag browser categories'))
     c.add_opt('manage_device_metadata', default='manual',
         help=_('How and when calibre updates metadata on the device.'))
     c.add_opt('limit_search_columns', default=False,
@@ -434,13 +434,17 @@ def create_global_prefs(conf_obj=None):
             help=_(u'Characters typed in the search box will match their '
                    'accented versions, based on the language you have chosen '
                    'for the calibre interface. For example, in '
-                   u' English, searching for n will match %s and n, but if '
+                   u'English, searching for n will match both {} and n, but if '
                    'your language is Spanish it will only match n. Note that '
                    'this is much slower than a simple search on very large '
-                   'libraries.')%u'\xf1')
+                   'libraries. Also, this option will have no effect if you turn '
+                   'on case-sensitive searching'))
+    c.add_opt('case_sensitive', default=False, help=_(
+        'Make searches case-sensitive'))
 
     c.add_opt('migrated', default=False, help='For Internal use. Don\'t modify.')
     return c
+
 
 prefs = ConfigProxy(create_global_prefs())
 if prefs['installation_uuid'] is None:
@@ -448,6 +452,8 @@ if prefs['installation_uuid'] is None:
     prefs['installation_uuid'] = str(uuid.uuid4())
 
 # Read tweaks
+
+
 def read_raw_tweaks():
     make_config_dir()
     default_tweaks = P('default_tweaks.py', data=True,
@@ -458,6 +464,7 @@ def read_raw_tweaks():
             f.write(default_tweaks)
     with open(tweaks_file, 'rb') as f:
         return default_tweaks, f.read()
+
 
 def read_tweaks():
     default_tweaks, tweaks = read_raw_tweaks()
@@ -473,6 +480,7 @@ def read_tweaks():
     dl.update(l)
     return dl
 
+
 def write_tweaks(raw):
     make_config_dir()
     tweaks_file = os.path.join(config_dir, 'tweaks.py')
@@ -482,6 +490,7 @@ def write_tweaks(raw):
 
 tweaks = read_tweaks()
 
+
 def reset_tweaks_to_default():
     default_tweaks = P('default_tweaks.py', data=True,
             allow_user_override=False)
@@ -489,6 +498,7 @@ def reset_tweaks_to_default():
     exec default_tweaks in dg, dl
     tweaks.clear()
     tweaks.update(dl)
+
 
 class Tweak(object):
 

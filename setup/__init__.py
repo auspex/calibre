@@ -6,7 +6,7 @@ __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import sys, re, os, platform, subprocess
+import sys, re, os, platform, subprocess, time, errno
 
 is64bit = platform.architecture()[0] == '64bit'
 iswindows = re.search('win(32|64)', sys.platform)
@@ -15,18 +15,58 @@ isfreebsd = 'freebsd' in sys.platform
 isnetbsd = 'netbsd' in sys.platform
 isdragonflybsd = 'dragonfly' in sys.platform
 isbsd = isnetbsd or isfreebsd or isdragonflybsd
-islinux = not isosx and not iswindows and not isbsd
-SRC = os.path.abspath('src')
+ishaiku = 'haiku1' in sys.platform
+islinux = not isosx and not iswindows and not isbsd and not ishaiku
+sys.setup_dir = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.abspath(os.path.join(os.path.dirname(sys.setup_dir), 'src'))
 sys.path.insert(0, SRC)
 sys.resources_location = os.path.join(os.path.dirname(SRC), 'resources')
-sys.extensions_location = os.path.join(SRC, 'calibre', 'plugins')
+sys.extensions_location = os.path.abspath(os.environ.get('CALIBRE_SETUP_EXTENSIONS_PATH', os.path.join(SRC, 'calibre', 'plugins')))
+sys.running_from_setup = True
 
 __version__ = __appname__ = modules = functions = basenames = scripts = None
 
-def require_git_master():
-    if subprocess.check_output(['git', 'symbolic-ref', '--short', 'HEAD']).strip() != 'master':
-        print >>sys.stderr, 'You must be in the master git branch'
-        raise SystemExit(1)
+_cache_dir_built = False
+
+
+def newer(targets, sources):
+    if isinstance(targets, basestring):
+        targets = [targets]
+    if isinstance(sources, basestring):
+        sources = [sources]
+    for f in targets:
+        if not os.path.exists(f):
+            return True
+    ttimes = map(lambda x: os.stat(x).st_mtime, targets)
+    stimes = map(lambda x: os.stat(x).st_mtime, sources)
+    newest_source, oldest_target = max(stimes), min(ttimes)
+    return newest_source > oldest_target
+
+
+def download_securely(url):
+    # We use curl here as on some OSes (OS X) when bootstrapping calibre,
+    # python will be unable to validate certificates until after cacerts is
+    # installed
+    return subprocess.check_output(['curl', '-fsSL', url])
+
+
+def build_cache_dir():
+    global _cache_dir_built
+    ans = os.path.join(os.path.dirname(SRC), '.build-cache')
+    if not _cache_dir_built:
+        _cache_dir_built = True
+        try:
+            os.mkdir(ans)
+        except EnvironmentError as err:
+            if err.errno != errno.EEXIST:
+                raise
+    return ans
+
+
+def require_git_master(branch='master'):
+    if subprocess.check_output(['git', 'symbolic-ref', '--short', 'HEAD']).strip() != branch:
+        raise SystemExit('You must be in the {} got branch'.format(branch))
+
 
 def require_clean_git():
     c = subprocess.check_call
@@ -41,16 +81,17 @@ def require_clean_git():
             print >>sys.stderr, 'Your git index contains uncommitted changes'
             raise SystemExit(1)
 
+
 def initialize_constants():
     global __version__, __appname__, modules, functions, basenames, scripts
 
-    src = open('src/calibre/constants.py', 'rb').read()
+    src = open(os.path.join(SRC, 'calibre/constants.py'), 'rb').read()
     nv = re.search(r'numeric_version\s+=\s+\((\d+), (\d+), (\d+)\)', src)
     __version__ = '%s.%s.%s'%(nv.group(1), nv.group(2), nv.group(3))
     __appname__ = re.search(r'__appname__\s+=\s+(u{0,1})[\'"]([^\'"]+)[\'"]',
             src).group(2)
     epsrc = re.compile(r'entry_points = (\{.*?\})', re.DOTALL).\
-            search(open('src/calibre/linux.py', 'rb').read()).group(1)
+            search(open(os.path.join(SRC, 'calibre/linux.py'), 'rb').read()).group(1)
     entry_points = eval(epsrc, {'__appname__': __appname__})
 
     def e2b(ep):
@@ -73,9 +114,11 @@ def initialize_constants():
         modules[x] = list(map(e2m, entry_points[y]))
         scripts[x] = list(map(e2s, entry_points[y]))
 
+
 initialize_constants()
 
 preferred_encoding = 'utf-8'
+
 
 def prints(*args, **kwargs):
     '''
@@ -115,10 +158,19 @@ def prints(*args, **kwargs):
             file.write(sep)
     file.write(end)
 
+
 warnings = []
+
 
 def get_warnings():
     return list(warnings)
+
+
+def edit_file(path):
+    return subprocess.Popen([
+        'vim', '-c', 'SyntasticCheck', '-c', 'll', '-S', os.path.join(SRC, '../session.vim'), '-f', path
+    ]).wait() == 0
+
 
 class Command(object):
 
@@ -170,12 +222,15 @@ class Command(object):
         self.info('*\n')
 
     def run_cmd(self, cmd, opts):
+        from setup.commands import command_names
         cmd.pre_sub_commands(opts)
         for scmd in cmd.sub_commands:
             self.run_cmd(scmd, opts)
 
+        st = time.time()
         self.running(cmd)
         cmd.run(opts)
+        self.info('* %s took %.1f seconds' % (command_names[cmd], time.time() - st))
 
     def run_all(self, opts):
         self.run_cmd(self, opts)
@@ -207,17 +262,7 @@ class Command(object):
         Return True if sources is newer that targets or if targets
         does not exist.
         '''
-        if isinstance(targets, basestring):
-            targets = [targets]
-        if isinstance(sources, basestring):
-            sources = [sources]
-        for f in targets:
-            if not os.path.exists(f):
-                return True
-        ttimes = map(lambda x: os.stat(x).st_mtime, targets)
-        stimes = map(lambda x: os.stat(x).st_mtime, sources)
-        newest_source, oldest_target = max(stimes), min(ttimes)
-        return newest_source > oldest_target
+        return newer(targets, sources)
 
     def info(self, *args, **kwargs):
         prints(*args, **kwargs)
@@ -229,6 +274,7 @@ class Command(object):
         print '_'*50
         warnings.append((args, kwargs))
         sys.stdout.flush()
+
 
 def installer_name(ext, is64bit=False):
     if is64bit and ext == 'msi':
@@ -244,6 +290,3 @@ def installer_name(ext, is64bit=False):
     if is64bit:
         ans = ans.replace('i686', 'x86_64')
     return ans
-
-
-

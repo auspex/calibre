@@ -14,7 +14,7 @@ from PyQt5.Qt import (
 from calibre.customize.ui import (available_input_formats, available_output_formats,
     device_plugins, disabled_device_plugins)
 from calibre.devices.interface import DevicePlugin, currently_connected_device
-from calibre.devices.errors import (UserFeedback, OpenFeedback, OpenFailed,
+from calibre.devices.errors import (UserFeedback, OpenFeedback, OpenFailed, OpenActionNeeded,
                                     InitialConnectionError)
 from calibre.ebooks.covers import cprefs, override_prefs, scale_cover, generate_cover
 from calibre.gui2.dialogs.choose_format_device import ChooseFormatDeviceDialog
@@ -28,7 +28,6 @@ from calibre import preferred_encoding, prints, force_unicode, as_unicode, sanit
 from calibre.utils.filenames import ascii_filename
 from calibre.devices.errors import (FreeSpaceError, WrongDestinationError,
         BlacklistedDevice)
-from calibre.devices.apple.driver import ITUNES_ASYNC
 from calibre.devices.folder_device.driver import FOLDER_DEVICE
 from calibre.constants import DEBUG
 from calibre.utils.config import tweaks, device_prefs
@@ -36,6 +35,7 @@ from calibre.utils.img import scale_image
 from calibre.library.save_to_disk import find_plugboard
 from calibre.ptempfile import PersistentTemporaryFile, force_unicode as filename_to_unicode
 # }}}
+
 
 class DeviceJob(BaseJob):  # {{{
 
@@ -116,10 +116,12 @@ class DeviceJob(BaseJob):  # {{{
 
     # }}}
 
+
 def device_name_for_plugboards(device_class):
     if hasattr(device_class, 'DEVICE_PLUGBOARD_NAME'):
         return device_class.DEVICE_PLUGBOARD_NAME
     return device_class.__class__.__name__
+
 
 class BusyCursor(object):
 
@@ -162,6 +164,7 @@ class DeviceManager(Thread):  # {{{
         self.ejected_devices  = set([])
         self.mount_connection_requests = Queue.Queue(0)
         self.open_feedback_slot = open_feedback_slot
+        self.open_feedback_only_once_seen = set()
         self.after_callback_feedback_slot = after_callback_feedback_slot
         self.open_feedback_msg = open_feedback_msg
         self._device_information = None
@@ -293,6 +296,10 @@ class DeviceManager(Thread):  # {{{
                         except BlacklistedDevice as e:
                             prints('Ignoring blacklisted device: %s'%
                                     as_unicode(e))
+                        except OpenActionNeeded as e:
+                            if e.only_once_id not in self.open_feedback_only_once_seen:
+                                self.open_feedback_only_once_seen.add(e.only_once_id)
+                                self.open_feedback_msg(e.device_name, e)
                         except:
                             prints('Error while trying to open %s (Driver: %s)'%
                                     (cd, dev))
@@ -327,7 +334,7 @@ class DeviceManager(Thread):  # {{{
                 if e.show_me:
                     traceback.print_exc()
 
-    # Mount devices that don't use USB, such as the folder device and iTunes
+    # Mount devices that don't use USB, such as the folder device
     # This will be called on the GUI thread. Because of this, we must store
     # information that the scanner thread will use to do the real work.
     def mount_device(self, kls, kind, path):
@@ -593,9 +600,9 @@ class DeviceManager(Thread):  # {{{
 
     def upload_books(self, done, files, names, on_card=None, titles=None,
                      metadata=None, plugboards=None, add_as_step_to_job=None):
-        desc = _('Upload %d books to device')%len(names)
+        desc = ngettext('Upload one book to the device', 'Upload {} books to the device', len(names)).format(len(names))
         if titles:
-            desc += u':' + u', '.join(titles)
+            desc += u': ' + u', '.join(titles)
         return self.create_job_step(self._upload_books, done, to_job=add_as_step_to_job,
                                args=[files, names],
                 kwargs={'on_card':on_card,'metadata':metadata,'plugboards':plugboards}, description=desc)
@@ -685,6 +692,7 @@ class DeviceManager(Thread):  # {{{
 
     # }}}
 
+
 class DeviceAction(QAction):  # {{{
 
     a_s = pyqtSignal(object)
@@ -703,6 +711,7 @@ class DeviceAction(QAction):  # {{{
         return self.__class__.__name__ + ':%s:%s:%s'%(self.dest, self.delete,
                 self.specific)
     # }}}
+
 
 class DeviceMenu(QMenu):  # {{{
 
@@ -853,6 +862,7 @@ class DeviceMenu(QMenu):  # {{{
 
     # }}}
 
+
 class DeviceSignals(QObject):  # {{{
     #: This signal is emitted once, after metadata is downloaded from the
     #: connected device.
@@ -869,8 +879,10 @@ class DeviceSignals(QObject):  # {{{
     #: otherwise a disconnection.
     device_connection_changed = pyqtSignal(object)
 
+
 device_signals = DeviceSignals()
 # }}}
+
 
 class DeviceMixin(object):  # {{{
 
@@ -940,10 +952,7 @@ class DeviceMixin(object):  # {{{
         if dir is not None:
             self.device_manager.mount_device(kls=FOLDER_DEVICE, kind='folder', path=dir)
 
-    def connect_to_itunes(self):
-        self.device_manager.mount_device(kls=ITUNES_ASYNC, kind='itunes', path=None)
-
-    # disconnect from both folder and itunes devices
+    # disconnect from folder devices
     def disconnect_mounted_device(self):
         self.device_manager.umount_device()
 
@@ -955,23 +964,30 @@ class DeviceMixin(object):  # {{{
                     _('Cannot configure the device while there are running'
                         ' device jobs.'), show=True)
         dev = self.device_manager.connected_device
+
         cw = dev.config_widget()
-        d = QDialog(self)
-        d.setWindowTitle(_('Configure %s')%dev.get_gui_name())
-        d.setWindowIcon(QIcon(I('config.png')))
-        l = QVBoxLayout(d)
-        d.setLayout(l)
+        config_dialog = QDialog(self)
+
+        config_dialog.setWindowTitle(_('Configure %s')%dev.get_gui_name())
+        config_dialog.setWindowIcon(QIcon(I('config.png')))
+        l = QVBoxLayout(config_dialog)
+        config_dialog.setLayout(l)
         bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
-        bb.accepted.connect(d.accept)
-        bb.rejected.connect(d.reject)
+        bb.accepted.connect(config_dialog.accept)
+        bb.rejected.connect(config_dialog.reject)
         l.addWidget(cw)
         l.addWidget(bb)
+        # We do not save/restore the size of this dialog as different devices
+        # have very different size requirements
+        config_dialog.resize(config_dialog.sizeHint())
+
         def validate():
             if cw.validate():
-                QDialog.accept(d)
-        d.accept = validate
-        if d.exec_() == d.Accepted:
+                QDialog.accept(config_dialog)
+        config_dialog.accept = validate
+        if config_dialog.exec_() == config_dialog.Accepted:
             dev.save_settings(cw)
+
             do_restart = show_restart_warning(_('Restart calibre for the changes to %s'
                 ' to be applied.')%dev.get_gui_name(), parent=self)
             if do_restart:
@@ -1231,11 +1247,11 @@ class DeviceMixin(object):  # {{{
                             format_count[f] = 1
             for f in self.device_manager.device.settings().format_map:
                 if f in format_count.keys():
-                    formats.append((f, _('%(num)i of %(total)i Books') % dict(
+                    formats.append((f, _('%(num)i of %(total)i books') % dict(
                         num=format_count[f], total=len(rows)),
                         True if f in aval_out_formats else False))
                 elif f in aval_out_formats:
-                    formats.append((f, _('0 of %i Books') % len(rows), True))
+                    formats.append((f, _('0 of %i books') % len(rows), True))
             d = ChooseFormatDeviceDialog(self, _('Choose format to send to device'), formats)
             if d.exec_() != QDialog.Accepted:
                 return
@@ -1353,6 +1369,7 @@ class DeviceMixin(object):  # {{{
     @dynamic_property
     def news_to_be_synced(self):
         doc = 'Set of ids to be sent to device'
+
         def fget(self):
             ans = []
             try:
@@ -1753,6 +1770,7 @@ class DeviceMixin(object):  # {{{
             return False
 
         string_pat = re.compile('(?u)\W|[_]')
+
         def clean_string(x):
             x = x.lower() if x else ''
             return string_pat.sub('', x)
@@ -1992,4 +2010,3 @@ class DeviceMixin(object):  # {{{
         # The status line is reset when the job finishes
         return update_metadata
     # }}}
-

@@ -26,6 +26,7 @@ cssutils_log.setLevel(logging.WARN)
 
 _html_css_stylesheet = None
 
+
 def html_css_stylesheet():
     global _html_css_stylesheet
     if _html_css_stylesheet is None:
@@ -53,6 +54,7 @@ FONT_SIZE_NAMES = {
 ALLOWED_MEDIA_TYPES = frozenset({'screen', 'all', 'aural', 'amzn-kf8'})
 IGNORED_MEDIA_FEATURES = frozenset('width min-width max-width height min-height max-height device-width min-device-width max-device-width device-height min-device-height max-device-height aspect-ratio min-aspect-ratio max-aspect-ratio device-aspect-ratio min-device-aspect-ratio max-device-aspect-ratio color min-color max-color color-index min-color-index max-color-index monochrome min-monochrome max-monochrome -webkit-min-device-pixel-ratio resolution min-resolution max-resolution scan grid'.split())  # noqa
 
+
 def media_ok(raw):
     if not raw:
         return True
@@ -78,6 +80,7 @@ def media_ok(raw):
         pass
     return True
 
+
 def test_media_ok():
     assert media_ok(None)
     assert media_ok('')
@@ -89,6 +92,7 @@ def test_media_ok():
     assert not media_ok('(device-width:10px)')
     assert media_ok('screen, (device-width:10px)')
     assert not media_ok('screen and (device-width:10px)')
+
 
 class Stylizer(object):
     STYLESHEETS = WeakKeyDictionary()
@@ -233,8 +237,6 @@ class Stylizer(object):
                 if fl == 'first-letter' and getattr(self.oeb,
                         'plumber_output_format', '').lower() in {u'mobi', u'docx'}:
                     # Fake first-letter
-                    from lxml.builder import ElementMaker
-                    E = ElementMaker(namespace=XHTML_NS)
                     for elem in matches:
                         for x in elem.iter('*'):
                             if x.text:
@@ -249,7 +251,8 @@ class Stylizer(object):
 
                                 special_text = u''.join(punctuation_chars) + \
                                         (text[0] if text else u'')
-                                span = E.span(special_text)
+                                span = x.makeelement('{%s}span' % XHTML_NS)
+                                span.text = special_text
                                 span.set('data-fake-first-letter', '1')
                                 span.tail = text[1:]
                                 x.text = None
@@ -338,6 +341,9 @@ class Stylizer(object):
                 size = 'xx-small'
             if size in FONT_SIZE_NAMES:
                 style['font-size'] = "%dpt" % self.profile.fnames[size]
+        if '-epub-writing-mode' in style:
+            for x in ('-webkit-writing-mode', 'writing-mode'):
+                style[x] = style.get(x, style['-epub-writing-mode'])
         return style
 
     def _apply_text_align(self, text):
@@ -414,7 +420,10 @@ class Style(object):
         self._style.update(self._stylizer.flatten_style(style))
 
     def _has_parent(self):
-        return (self._element.getparent() is not None)
+        try:
+            return self._element.getparent() is not None
+        except AttributeError:
+            return False  # self._element is None
 
     def _get_parent(self):
         elem = self._element.getparent()
@@ -766,4 +775,3 @@ class Style(object):
     @property
     def is_hidden(self):
         return self._style.get('display') == 'none' or self._style.get('visibility') == 'hidden'
-

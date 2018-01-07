@@ -11,10 +11,11 @@ from PyQt5.Qt import QToolButton
 
 from calibre.gui2.actions import InterfaceAction
 
+
 class SimilarBooksAction(InterfaceAction):
 
     name = 'Similar Books'
-    action_spec = (_('Similar books...'), None, _('Show books similar to the current book'), None)
+    action_spec = (_('Similar books...'), 'similar.png', _('Show books similar to the current book'), None)
     popup_type = QToolButton.InstantPopup
     action_type = 'current'
     action_add_menu = True
@@ -73,11 +74,9 @@ class SimilarBooksAction(InterfaceAction):
         if not val:
             return
 
-        if not isinstance(val, (list, set)):
+        if isinstance(val, basestring):
             val = [val]
         search = [col + ':"='+t.replace('"', '\\"')+'"' for t in val]
         if search:
             self.gui.search.set_search_string(join.join(search),
                     store_in_history=True)
-
-

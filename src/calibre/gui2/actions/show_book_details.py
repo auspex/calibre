@@ -11,10 +11,11 @@ from calibre.gui2.actions import InterfaceAction
 from calibre.gui2.dialogs.book_info import BookInfo
 from calibre.gui2 import error_dialog
 
+
 class ShowBookDetailsAction(InterfaceAction):
 
     name = 'Show Book Details'
-    action_spec = (_('Show book details'), 'dialog_information.png',
+    action_spec = (_('Show Book details'), 'dialog_information.png',
                    _('Show the detailed metadata for the current book in a separate window'), _('I'))
     dont_add_to = frozenset(['context-menu-device'])
     action_type = 'current'
@@ -47,4 +48,3 @@ class ShowBookDetailsAction(InterfaceAction):
             import sip
             sip.delete(d)
             del d
-

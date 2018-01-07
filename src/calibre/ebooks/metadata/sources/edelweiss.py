@@ -15,19 +15,31 @@ from calibre import as_unicode, random_user_agent
 from calibre.ebooks.metadata import check_isbn
 from calibre.ebooks.metadata.sources.base import Source
 
-def parse_html(raw):
-    import html5lib
+
+def clean_html(raw):
     from calibre.ebooks.chardet import xml_to_unicode
     from calibre.utils.cleantext import clean_ascii_chars
-    raw = clean_ascii_chars(xml_to_unicode(raw, strip_encoding_pats=True,
+    return clean_ascii_chars(xml_to_unicode(raw, strip_encoding_pats=True,
                                 resolve_entities=True, assume_utf8=True)[0])
-    return html5lib.parse(raw, treebuilder='lxml',
-                              namespaceHTMLElements=False).getroot()
+
+
+def parse_html(raw):
+    raw = clean_html(raw)
+    try:
+        from html5_parser import parse
+    except ImportError:
+        # Old versions of calibre
+        import html5lib
+        return html5lib.parse(raw, treebuilder='lxml', namespaceHTMLElements=False)
+    else:
+        return parse(raw)
+
 
 def astext(node):
     from lxml import etree
     return etree.tostring(node, method='text', encoding=unicode,
                           with_tail=False).strip()
+
 
 class Worker(Thread):  # {{{
 
@@ -158,9 +170,12 @@ class Worker(Thread):  # {{{
         return sanitize_comments_html(desc)
 # }}}
 
+
 class Edelweiss(Source):
 
     name = 'Edelweiss'
+    version = (1, 0, 0)
+    minimum_calibre_version = (2, 80, 0)
     description = _('Downloads metadata and covers from Edelweiss - A catalog updated by book publishers')
 
     capabilities = frozenset(['identify', 'cover'])
@@ -178,7 +193,7 @@ class Edelweiss(Source):
 
     def _get_book_url(self, sku):
         if sku:
-            return 'http://edelweiss.abovethetreeline.com/ProductDetailPage.aspx?sku=%s'%sku
+            return 'https://edelweiss.abovethetreeline.com/ProductDetailPage.aspx?sku=%s'%sku
 
     def get_book_url(self, identifiers):  # {{{
         sku = identifiers.get('edelweiss', None)
@@ -198,7 +213,7 @@ class Edelweiss(Source):
 
     def create_query(self, log, title=None, authors=None, identifiers={}):
         from urllib import urlencode
-        BASE_URL = 'http://edelweiss.abovethetreeline.com/Browse.aspx?source=catalog&rg=4187&group=browse&pg=0&'
+        BASE_URL = 'https://edelweiss.abovethetreeline.com/Browse.aspx?source=catalog&rg=4187&group=browse&pg=0&'
         params = {
             'browseType':'title', 'startIndex':0, 'savecook':1, 'sord':20, 'secSord':20, 'tertSord':20,
         }
@@ -354,6 +369,7 @@ class Edelweiss(Source):
         except:
             log.exception('Failed to download cover from:', cached_url)
     # }}}
+
 
 if __name__ == '__main__':
     from calibre.ebooks.metadata.sources.test import (

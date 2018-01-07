@@ -30,14 +30,18 @@ KEY = Qt.Key_J
 MODIFIER = Qt.META if isosx else Qt.CTRL
 
 SnipKey = namedtuple('SnipKey', 'trigger syntaxes')
+
+
 def snip_key(trigger, *syntaxes):
     if '*' in syntaxes:
         syntaxes = all_text_syntaxes
     return SnipKey(trigger, frozenset(syntaxes))
 
+
 def contains(l1, r1, l2, r2):
     # True iff (l2, r2) if contained in (l1, r1)
     return l2 > l1 and r2 < r1
+
 
 builtin_snippets = {  # {{{
     snip_key('Lorem', 'html', 'xml'):  {
@@ -85,6 +89,8 @@ obtain some advantage from it? But.</p>
 
 # Parsing of snippets {{{
 escape = unescape = None
+
+
 def escape_funcs():
     global escape, unescape
     if escape is None:
@@ -95,6 +101,7 @@ def escape_funcs():
         unescape_pat = re.compile('|'.join(unescapem))
         unescape = lambda x:unescape_pat.sub(lambda m:unescapem[m.group()], x)
     return escape, unescape
+
 
 class TabStop(unicode):
 
@@ -129,6 +136,7 @@ class TabStop(unicode):
         return 'TabStop(text=%s num=%d start=%d is_mirror=%s takes_selection=%s is_toplevel=%s)' % (
             unicode.__repr__(self), self.num, self.start, self.is_mirror, self.takes_selection, self.is_toplevel)
 
+
 def parse_template(template, start_offset=0, is_toplevel=True, grouped=True):
     escape, unescape = escape_funcs()
     template = escape(template)
@@ -155,8 +163,10 @@ def parse_template(template, start_offset=0, is_toplevel=True, grouped=True):
 
 # }}}
 
+
 _snippets = None
 user_snippets = JSONConfig('editor_snippets')
+
 
 def snippets(refresh=False):
     global _snippets
@@ -170,6 +180,7 @@ def snippets(refresh=False):
     return _snippets
 
 # Editor integration {{{
+
 
 class EditorTabStop(object):
 
@@ -218,6 +229,7 @@ class EditorTabStop(object):
             c = editor.textCursor()
             c.setPosition(self.left), c.setPosition(self.right, c.KeepAnchor)
             return editor.selected_text_from_cursor(c)
+
         def fset(self, text):
             editor = self.editor()
             if editor is None or self.is_deleted:
@@ -261,6 +273,7 @@ class EditorTabStop(object):
                 self.left += chars_added
             if position <= self.right:
                 self.right += chars_added
+
 
 class Template(list):
 
@@ -329,6 +342,7 @@ class Template(list):
                 dist, ans = x, c
         return ans
 
+
 def expand_template(editor, trigger, template):
     c = editor.textCursor()
     c.beginEditBlock()
@@ -348,6 +362,7 @@ def expand_template(editor, trigger, template):
     c.endEditBlock()
     return tl
 
+
 def find_matching_snip(text, syntax=None, snip_func=None):
     ans_snip = ans_trigger = None
     for key, snip in (snip_func or snippets)():
@@ -355,6 +370,7 @@ def find_matching_snip(text, syntax=None, snip_func=None):
             ans_snip, ans_trigger = snip, key.trigger
             break
     return ans_snip, ans_trigger
+
 
 class SnippetManager(QObject):
 
@@ -405,6 +421,7 @@ class SnippetManager(QObject):
             if snip is None:
                 error_dialog(self.parent(), _('No snippet found'), _(
                     'No matching snippet was found'), show=True)
+                self.last_selected_text = self.last_selected_text or lst
                 return True
             template = expand_template(editor, trigger, snip['template'])
             if template.has_tab_stops:
@@ -420,6 +437,7 @@ class SnippetManager(QObject):
 
 # Config {{{
 
+
 class SnippetTextEdit(PlainTextEdit):
 
     def __init__(self, text, parent=None):
@@ -432,6 +450,7 @@ class SnippetTextEdit(PlainTextEdit):
         if self.snippet_manager.handle_key_press(ev):
             return
         PlainTextEdit.keyPressEvent(self, ev)
+
 
 class EditSnippet(QWidget):
 
@@ -451,7 +470,7 @@ class EditSnippet(QWidget):
         self.heading = la = QLabel('<h2>\xa0')
         add_row(la)
         self.helpl = la = QLabel(_('For help with snippets, see the <a href="%s">User Manual</a>') %
-                                 localize_user_manual_link('http://manual.calibre-ebook.com/snippets.html'))
+                                 localize_user_manual_link('https://manual.calibre-ebook.com/snippets.html'))
         la.setOpenExternalLinks(True)
         add_row(la)
 
@@ -521,6 +540,7 @@ class EditSnippet(QWidget):
     def snip(self):
         def fset(self, snip):
             self.apply_snip(snip)
+
         def fget(self):
             ftypes = []
             for i in xrange(self.types.count()):
@@ -544,10 +564,11 @@ class EditSnippet(QWidget):
             err = _('You must specify at least one file type')
         return err
 
+
 class UserSnippets(Dialog):
 
     def __init__(self, parent=None):
-        Dialog.__init__(self, _('Create/Edit snippets'), 'snippet-editor', parent=parent)
+        Dialog.__init__(self, _('Create/edit snippets'), 'snippet-editor', parent=parent)
         self.setWindowIcon(QIcon(I('snippets.png')))
 
     def setup_ui(self):
@@ -693,6 +714,7 @@ class UserSnippets(Dialog):
             self.stack.setCurrentIndex(1)
             self.edit_snip.apply_snip(lw.currentItem().data(Qt.UserRole), creating_snippet=True)
 # }}}
+
 
 if __name__ == '__main__':
     from calibre.gui2 import Application

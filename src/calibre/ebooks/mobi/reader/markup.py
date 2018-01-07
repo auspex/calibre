@@ -11,6 +11,7 @@ import re, os
 
 from calibre.ebooks.chardet import strip_encoding_declarations
 
+
 def update_internal_links(mobi8_reader, log):
     # need to update all links that are internal which
     # are based on positions within the xhtml files **BEFORE**
@@ -58,6 +59,7 @@ def update_internal_links(mobi8_reader, log):
     # All parts are now unicode and have no internal links
     return parts
 
+
 def remove_kindlegen_markup(parts, aid_anchor_suffix, linked_aids):
 
     # we can safely remove all of the Kindlegen generated aid attributes and
@@ -102,6 +104,7 @@ def remove_kindlegen_markup(parts, aid_anchor_suffix, linked_aids):
                     lambda m:' style="page-break-after:%s"'%m.group(1), tag)
         part = "".join(srcpieces)
         parts[i] = part
+
 
 def update_flow_links(mobi8_reader, resource_map, log):
     #   kindle:embed:XXXX?mime=image/gif (png, jpeg, etc) (used for images)
@@ -197,14 +200,19 @@ def update_flow_links(mobi8_reader, resource_map, log):
             tag = srcpieces[j]
             if tag.startswith('<'):
                 for m in re.finditer(flow_pattern, tag):
-                    num = int(m.group(1), 32)
-                    fi = mr.flowinfo[num]
-                    if fi.format == 'inline':
-                        flowtext = mr.flows[num]
-                        tag = flowtext
+                    try:
+                        num = int(m.group(1), 32)
+                        fi = mr.flowinfo[num]
+                    except IndexError:
+                        log.warn('Ignoring invalid flow reference in tag', tag)
+                        tag = ''
                     else:
-                        replacement = '"../' + fi.dir + '/' + fi.fname + '"'
-                        tag = flow_pattern.sub(replacement, tag, 1)
+                        if fi.format == 'inline':
+                            flowtext = mr.flows[num]
+                            tag = flowtext
+                        else:
+                            replacement = '"../' + fi.dir + '/' + fi.fname + '"'
+                            tag = flow_pattern.sub(replacement, tag, 1)
                 srcpieces[j] = tag
         flow = "".join(srcpieces)
 
@@ -212,6 +220,7 @@ def update_flow_links(mobi8_reader, resource_map, log):
 
     # All flows are now unicode and have links resolved
     return flows
+
 
 def insert_flows_into_markup(parts, flows, mobi8_reader, log):
     mr = mobi8_reader
@@ -244,6 +253,7 @@ def insert_flows_into_markup(parts, flows, mobi8_reader, log):
         part = "".join(srcpieces)
         # store away modified version
         parts[i] = part
+
 
 def insert_images_into_markup(parts, resource_map, log):
     # Handle any embedded raster images links in the xhtml text
@@ -316,12 +326,14 @@ def upshift_markup(parts):
         # store away modified version
         parts[i] = part
 
+
 def handle_media_queries(raw):
     # cssutils cannot handle CSS 3 media queries. We look for media queries
     # that use amzn-mobi or amzn-kf8 and map them to a simple @media screen
     # rule. See https://bugs.launchpad.net/bugs/1406708 for an example
     import tinycss
     parser = tinycss.make_full_parser()
+
     def replace(m):
         sheet = parser.parse_stylesheet(m.group() + '}')
         if len(sheet.rules) > 0:
@@ -335,6 +347,7 @@ def handle_media_queries(raw):
         return m.group()
 
     return re.sub(r'@media\s[^{;]*?[{;]', replace, raw)
+
 
 def expand_mobi8_markup(mobi8_reader, resource_map, log):
     # First update all internal links that are based on offsets
@@ -382,4 +395,3 @@ def expand_mobi8_markup(mobi8_reader, resource_map, log):
                 f.write(flow.encode('utf-8'))
 
     return spine
-

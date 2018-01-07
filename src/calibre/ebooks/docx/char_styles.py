@@ -11,6 +11,8 @@ from calibre.ebooks.docx.block_styles import (  # noqa
     inherit, simple_color, LINE_STYLES, simple_float, binary_property, read_shd)
 
 # Read from XML {{{
+
+
 def read_text_border(parent, dest, XPath, get):
     border_color = border_style = border_width = padding = inherit
     elems = XPath('./w:bdr')(parent)
@@ -45,6 +47,7 @@ def read_text_border(parent, dest, XPath, get):
     setattr(dest, 'border_width', border_width)
     setattr(dest, 'padding', padding)
 
+
 def read_color(parent, dest, XPath, get):
     ans = inherit
     for col in XPath('./w:color[@w:val]')(parent):
@@ -54,11 +57,13 @@ def read_color(parent, dest, XPath, get):
         ans = simple_color(val)
     setattr(dest, 'color', ans)
 
+
 def convert_highlight_color(val):
     return {
         'darkBlue': '#000080', 'darkCyan': '#008080', 'darkGray': '#808080',
         'darkGreen': '#008000', 'darkMagenta': '#800080', 'darkRed': '#800000', 'darkYellow': '#808000',
         'lightGray': '#c0c0c0'}.get(val, val)
+
 
 def read_highlight(parent, dest, XPath, get):
     ans = inherit
@@ -72,6 +77,7 @@ def read_highlight(parent, dest, XPath, get):
             val = convert_highlight_color(val)
         ans = val
     setattr(dest, 'highlight', ans)
+
 
 def read_lang(parent, dest, XPath, get):
     ans = inherit
@@ -90,6 +96,7 @@ def read_lang(parent, dest, XPath, get):
                 ans = val
     setattr(dest, 'lang', ans)
 
+
 def read_letter_spacing(parent, dest, XPath, get):
     ans = inherit
     for col in XPath('./w:spacing[@w:val]')(parent):
@@ -98,13 +105,6 @@ def read_letter_spacing(parent, dest, XPath, get):
             ans = val
     setattr(dest, 'letter_spacing', ans)
 
-def read_sz(parent, dest, XPath, get):
-    ans = inherit
-    for col in XPath('./w:sz[@w:val]')(parent):
-        val = simple_float(get(col, 'w:val'), 0.5)
-        if val is not None:
-            ans = val
-    setattr(dest, 'font_size', ans)
 
 def read_underline(parent, dest, XPath, get):
     ans = inherit
@@ -114,6 +114,7 @@ def read_underline(parent, dest, XPath, get):
             ans = val if val == 'none' else 'underline'
     setattr(dest, 'text_decoration', ans)
 
+
 def read_vert_align(parent, dest, XPath, get):
     ans = inherit
     for col in XPath('./w:vertAlign[@w:val]')(parent):
@@ -121,6 +122,7 @@ def read_vert_align(parent, dest, XPath, get):
         if val and val in {'baseline', 'subscript', 'superscript'}:
             ans = val
     setattr(dest, 'vert_align', ans)
+
 
 def read_position(parent, dest, XPath, get):
     ans = inherit
@@ -132,18 +134,33 @@ def read_position(parent, dest, XPath, get):
             pass
     setattr(dest, 'position', ans)
 
-def read_font_family(parent, dest, XPath, get):
-    ans = inherit
+
+def read_font(parent, dest, XPath, get):
+    ff = inherit
+    used_cs = False
     for col in XPath('./w:rFonts')(parent):
         val = get(col, 'w:asciiTheme')
         if val:
             val = '|%s|' % val
         else:
             val = get(col, 'w:ascii')
+        if not val:
+            val = get(col, 'w:cs')
+            used_cs = bool(val)
         if val:
-            ans = val
-    setattr(dest, 'font_family', ans)
+            ff = val
+    setattr(dest, 'font_family', ff)
+    sizes = ('szCs', 'sz') if used_cs else ('sz', 'szCs')
+    for q in sizes:
+        for col in XPath('./w:%s[@w:val]' % q)(parent):
+            val = simple_float(get(col, 'w:val'), 0.5)
+            if val is not None:
+                setattr(dest, 'font_size', val)
+                return
+    setattr(dest, 'font_size', inherit)
+
 # }}}
+
 
 class RunStyle(object):
 
@@ -166,18 +183,26 @@ class RunStyle(object):
             for p in self.all_properties:
                 setattr(self, p, inherit)
         else:
+            X, g = namespace.XPath, namespace.get
             for p in (
                 'b', 'bCs', 'caps', 'cs', 'dstrike', 'emboss', 'i', 'iCs', 'imprint', 'rtl', 'shadow',
                 'smallCaps', 'strike', 'vanish', 'webHidden',
             ):
-                setattr(self, p, binary_property(rPr, p, namespace.XPath, namespace.get))
+                setattr(self, p, binary_property(rPr, p, X, g))
 
-            for x in ('text_border', 'color', 'highlight', 'shd', 'letter_spacing', 'sz', 'underline', 'vert_align', 'position', 'lang', 'font_family'):
-                f = globals()['read_%s' % x]
-                f(rPr, self, namespace.XPath, namespace.get)
+            read_font(rPr, self, X, g)
+            read_text_border(rPr, self, X, g)
+            read_color(rPr, self, X, g)
+            read_highlight(rPr, self, X, g)
+            read_shd(rPr, self, X, g)
+            read_letter_spacing(rPr, self, X, g)
+            read_underline(rPr, self, X, g)
+            read_vert_align(rPr, self, X, g)
+            read_position(rPr, self, X, g)
+            read_lang(rPr, self, X, g)
 
-            for s in namespace.XPath('./w:rStyle[@w:val]')(rPr):
-                self.linked_style = namespace.get(s, 'w:val')
+            for s in X('./w:rStyle[@w:val]')(rPr):
+                self.linked_style = g(s, 'w:val')
 
         self._css = None
 
@@ -261,4 +286,3 @@ class RunStyle(object):
 
     def same_border(self, other):
         return self.get_border_css({}) == other.get_border_css({})
-

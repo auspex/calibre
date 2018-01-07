@@ -6,7 +6,7 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import unicodedata
+import unicodedata, math
 from functools import partial
 
 from PyQt5.Qt import (
@@ -25,10 +25,11 @@ from calibre.gui2.tweak_book.editor.help import help_url
 from calibre.gui2.tweak_book.editor.text import TextEdit
 from calibre.utils.icu import utf16_length
 
+
 def create_icon(text, palette=None, sz=None, divider=2, fill='white'):
     if isinstance(fill, basestring):
         fill = QColor(fill)
-    sz = sz or tprefs['toolbar_icon_size']
+    sz = sz or int(math.ceil(tprefs['toolbar_icon_size'] * QApplication.instance().devicePixelRatio()))
     if palette is None:
         palette = QApplication.palette()
     img = QImage(sz, sz, QImage.Format_ARGB32)
@@ -43,6 +44,7 @@ def create_icon(text, palette=None, sz=None, divider=2, fill='white'):
     p.drawText(img.rect().adjusted(2, 2, -2, -2), Qt.AlignCenter, text)
     p.end()
     return QIcon(QPixmap.fromImage(img))
+
 
 def register_text_editor_actions(_reg, palette):
     def reg(*args, **kw):
@@ -68,9 +70,9 @@ def register_text_editor_actions(_reg, palette):
     ac.setToolTip(_('<h3>Subscript</h3>Set the selected text slightly smaller and below the normal line'))
     ac = reg('format-text-color.png', _('&Color'), ('format_text', 'color'), 'format-text-color', (), _('Change text color'))
     ac.setToolTip(_('<h3>Color</h3>Change the color of the selected text'))
-    ac = reg('format-fill-color.png', _('&Background Color'), ('format_text', 'background-color'),
+    ac = reg('format-fill-color.png', _('&Background color'), ('format_text', 'background-color'),
              'format-text-background-color', (), _('Change background color of text'))
-    ac.setToolTip(_('<h3>Background Color</h3>Change the background color of the selected text'))
+    ac.setToolTip(_('<h3>Background color</h3>Change the background color of the selected text'))
     ac = reg('format-justify-left.png', _('Align &left'), ('format_text', 'justify_left'), 'format-text-justify-left', (), _('Align left'))
     ac.setToolTip(_('<h3>Align left</h3>Align the paragraph to the left'))
     ac = reg('format-justify-center.png', _('&Center'), ('format_text', 'justify_center'), 'format-text-justify-center', (), _('Center'))
@@ -80,6 +82,8 @@ def register_text_editor_actions(_reg, palette):
     ac = reg('format-justify-fill.png', _('&Justify'), ('format_text', 'justify_justify'), 'format-text-justify-fill', (), _('Justify'))
     ac.setToolTip(_('<h3>Justify</h3>Align the paragraph to both the left and right margins'))
 
+    ac = reg('sort.png', _('&Sort style rules'), ('sort_css',), 'editor-sort-css', (),
+             _('Sort the style rules'), syntaxes=('css',))
     ac = reg('view-image.png', _('&Insert image'), ('insert_resource', 'image'), 'insert-image', (),
              _('Insert an image into the text'), syntaxes=('html', 'css'))
     ac.setToolTip(_('<h3>Insert image</h3>Insert an image into the text'))
@@ -155,6 +159,7 @@ class Editor(QMainWindow):
     def current_line(self):
         def fget(self):
             return self.editor.textCursor().blockNumber()
+
         def fset(self, val):
             self.editor.go_to_line(val)
         return property(fget=fget, fset=fset)
@@ -164,6 +169,7 @@ class Editor(QMainWindow):
         def fget(self):
             c = self.editor.textCursor()
             return {'cursor':(c.anchor(), c.position())}
+
         def fset(self, val):
             anchor, position = val.get('cursor', (None, None))
             if anchor is not None and position is not None:
@@ -187,6 +193,7 @@ class Editor(QMainWindow):
             if changed:
                 self.data = ans
             return ans.encode('utf-8')
+
         def fset(self, val):
             self.editor.load_text(val, syntax=self.syntax, doc_name=editor_name(self))
         return property(fget=fget, fset=fset)
@@ -221,8 +228,8 @@ class Editor(QMainWindow):
         func = getattr(self.editor, action)
         func(*args)
 
-    def insert_image(self, href, fullpage=False, preserve_aspect_ratio=False):
-        self.editor.insert_image(href, fullpage=fullpage, preserve_aspect_ratio=preserve_aspect_ratio)
+    def insert_image(self, href, fullpage=False, preserve_aspect_ratio=False, width=-1, height=-1):
+        self.editor.insert_image(href, fullpage=fullpage, preserve_aspect_ratio=preserve_aspect_ratio, width=width, height=height)
 
     def insert_hyperlink(self, href, text):
         self.editor.insert_hyperlink(href, text)
@@ -286,6 +293,9 @@ class Editor(QMainWindow):
     def find(self, *args, **kwargs):
         return self.editor.find(*args, **kwargs)
 
+    def find_text(self, *args, **kwargs):
+        return self.editor.find_text(*args, **kwargs)
+
     def find_spell_word(self, *args, **kwargs):
         return self.editor.find_spell_word(*args, **kwargs)
 
@@ -307,6 +317,7 @@ class Editor(QMainWindow):
     def is_modified(self):
         def fget(self):
             return self.editor.is_modified
+
         def fset(self, val):
             self.editor.is_modified = val
         return property(fget=fget, fset=fset)
@@ -345,9 +356,12 @@ class Editor(QMainWindow):
         state = tprefs.get('%s-editor-state' % self.syntax, None)
         if state is not None:
             self.restoreState(state)
+        for bar in self.bars:
+            bar.setVisible(len(bar.actions()) > 0)
 
     def populate_toolbars(self):
         self.action_bar.clear(), self.tools_bar.clear()
+
         def add_action(name, bar):
             if name is None:
                 bar.addSeparator()
@@ -361,7 +375,10 @@ class Editor(QMainWindow):
             bar.addAction(ac)
             if name == 'insert-tag':
                 w = bar.widgetForAction(ac)
-                w.setPopupMode(QToolButton.MenuButtonPopup)
+                if hasattr(w, 'setPopupMode'):
+                    # For some unknown reason this button is occassionally a
+                    # QPushButton instead of a QToolButton
+                    w.setPopupMode(QToolButton.MenuButtonPopup)
                 w.setMenu(self.insert_tag_menu)
                 w.setContextMenuPolicy(Qt.CustomContextMenu)
                 w.customContextMenuRequested.connect(w.showMenu)
@@ -370,7 +387,10 @@ class Editor(QMainWindow):
                 m = ac.m = QMenu()
                 ac.setMenu(m)
                 ch = bar.widgetForAction(ac)
-                ch.setPopupMode(QToolButton.InstantPopup)
+                if hasattr(ch, 'setPopupMode'):
+                    # For some unknown reason this button is occassionally a
+                    # QPushButton instead of a QToolButton
+                    ch.setPopupMode(QToolButton.InstantPopup)
                 for name in tuple('h%d' % d for d in range(1, 7)) + ('p',):
                     m.addAction(actions['rename-block-tag-%s' % name])
 
@@ -579,6 +599,7 @@ class Editor(QMainWindow):
             dictionaries.add_to_user_dictionary(dic, word, locale)
         self.word_ignored.emit(word, locale)
 
+
 def launch_editor(path_to_edit, path_is_raw=False, syntax='html', callback=None):
     from calibre.gui2.tweak_book import dictionaries
     from calibre.gui2.tweak_book.main import option_parser
@@ -606,4 +627,3 @@ def launch_editor(path_to_edit, path_is_raw=False, syntax='html', callback=None)
         callback(t)
     t.show()
     app.exec_()
-

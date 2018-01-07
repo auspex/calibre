@@ -9,9 +9,10 @@ from calibre.gui2.convert import Widget
 
 format_model = None
 
+
 class PluginWidget(Widget, Ui_Form):
 
-    TITLE = _('HTMLZ Output')
+    TITLE = _('HTMLZ output')
     HELP = _('Options specific to')+' HTMLZ '+_('output')
     COMMIT_NAME = 'htmlz_output'
     ICON = I('mimetypes/html.png')

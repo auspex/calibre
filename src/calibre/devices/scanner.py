@@ -19,25 +19,22 @@ if iswindows:
     drive_ok_lock = Lock()
 
     def drive_is_ok(letter, max_tries=10, debug=False):
-        import win32api, win32file
+        import win32file
         with drive_ok_lock:
-            oldError = win32api.SetErrorMode(1)  # SEM_FAILCRITICALERRORS = 1
-            try:
-                for i in xrange(max_tries):
-                    try:
-                        win32file.GetDiskFreeSpaceEx(letter+':\\')
-                        return True
-                    except Exception as e:
-                        if i >= max_tries - 1 and debug:
-                            prints('Unable to get free space for drive:', letter)
-                            prints(as_unicode(e))
-                        time.sleep(0.2)
-                return False
-            finally:
-                win32api.SetErrorMode(oldError)
+            for i in xrange(max_tries):
+                try:
+                    win32file.GetDiskFreeSpaceEx(letter+':\\')
+                    return True
+                except Exception as e:
+                    if i >= max_tries - 1 and debug:
+                        prints('Unable to get free space for drive:', letter)
+                        prints(as_unicode(e))
+                    time.sleep(0.2)
+            return False
 
 _USBDevice = namedtuple('USBDevice',
     'vendor_id product_id bcd manufacturer product serial')
+
 
 class USBDevice(_USBDevice):
 
@@ -55,6 +52,7 @@ class USBDevice(_USBDevice):
 
     __str__ = __repr__
     __unicode__ = __repr__
+
 
 class LibUSBScanner(object):
 
@@ -94,6 +92,7 @@ class LibUSBScanner(object):
                 gc.collect()
             print 'Mem consumption increased by:', memory() - start, 'MB',
             print 'after', num, 'repeats'
+
 
 class LinuxScanner(object):
 
@@ -166,59 +165,6 @@ class LinuxScanner(object):
             ans.add(dev)
         return ans
 
-class FreeBSDScanner(object):
-
-    def __call__(self):
-        ans = set([])
-        import dbus
-
-        try:
-            bus = dbus.SystemBus()
-            manager = dbus.Interface(bus.get_object('org.freedesktop.Hal',
-                          '/org/freedesktop/Hal/Manager'), 'org.freedesktop.Hal.Manager')
-            paths = manager.FindDeviceStringMatch('freebsd.driver','da')
-            for path in paths:
-                obj = bus.get_object('org.freedesktop.Hal', path)
-                objif = dbus.Interface(obj, 'org.freedesktop.Hal.Device')
-                parentdriver = None
-                while parentdriver != 'umass':
-                    try:
-                        obj = bus.get_object('org.freedesktop.Hal',
-                              objif.GetProperty('info.parent'))
-                        objif = dbus.Interface(obj, 'org.freedesktop.Hal.Device')
-                        try:
-                            parentdriver = objif.GetProperty('freebsd.driver')
-                        except dbus.exceptions.DBusException as e:
-                            continue
-                    except dbus.exceptions.DBusException as e:
-                        break
-                if parentdriver != 'umass':
-                    continue
-                dev = []
-                try:
-                    dev.append(objif.GetProperty('usb.vendor_id'))
-                    dev.append(objif.GetProperty('usb.product_id'))
-                    dev.append(objif.GetProperty('usb.device_revision_bcd'))
-                except dbus.exceptions.DBusException as e:
-                    continue
-                try:
-                    dev.append(objif.GetProperty('info.vendor'))
-                except:
-                    dev.append('')
-                try:
-                    dev.append(objif.GetProperty('info.product'))
-                except:
-                    dev.append('')
-                try:
-                    dev.append(objif.GetProperty('usb.serial'))
-                except:
-                    dev.append('')
-                dev.append(path)
-                ans.add(tuple(dev))
-        except dbus.exceptions.DBusException as e:
-            print >>sys.stderr, "Execution failed:", e
-        return ans
-
 
 if islinux:
     linux_scanner = LinuxScanner()
@@ -236,11 +182,12 @@ if False and isosx:
     osx_scanner = usbobserver.get_usb_devices
 
 if isfreebsd:
-    freebsd_scanner = FreeBSDScanner()
+    freebsd_scanner = libusb_scanner
 
 ''' NetBSD support currently not written yet '''
 if isnetbsd:
     netbsd_scanner = None
+
 
 class DeviceScanner(object):
 
@@ -262,6 +209,7 @@ class DeviceScanner(object):
         ''' If only_presence is True don't perform any expensive checks '''
         return device.is_usb_connected(self.devices, debug=debug,
                 only_presence=only_presence)
+
 
 def test_for_mem_leak():
     from calibre.utils.mem import memory, gc_histogram, diff_hists
@@ -289,9 +237,11 @@ def test_for_mem_leak():
         diff_hists(h1, gc_histogram())
         prints()
 
+
 def main(args=sys.argv):
     test_for_mem_leak()
     return 0
+
 
 if __name__ == '__main__':
     sys.exit(main())

@@ -14,6 +14,7 @@ from calibre.gui2.preferences.main import Preferences
 from calibre.gui2 import error_dialog, show_restart_warning
 from calibre.constants import DEBUG, isosx
 
+
 class PreferencesAction(InterfaceAction):
 
     name = 'Preferences'
@@ -26,7 +27,7 @@ class PreferencesAction(InterfaceAction):
         cm = partial(self.create_menu_action, pm)
         if isosx:
             pm.addAction(QIcon(I('config.png')), _('Preferences'), self.do_config)
-        cm('welcome wizard', _('Run welcome wizard'),
+        cm('welcome wizard', _('Run welcome &wizard'),
                 icon='wizard.png', triggered=self.gui.run_wizard)
         cm('plugin updater', _('Get plugins to enhance calibre'),
                 icon='plugins/plugin_updater.png', triggered=self.get_plugins)
@@ -70,4 +71,3 @@ class PreferencesAction(InterfaceAction):
 
     def debug_restart(self, *args):
         self.gui.quit(restart=True, debug_on_restart=True)
-

@@ -15,8 +15,9 @@ from io import BytesIO
 from calibre.customize.ui import metadata_plugins
 from calibre.ebooks.metadata.sources.base import create_log
 from calibre.ebooks.metadata.sources.prefs import msprefs
-from calibre.utils.img import save_cover_data_to, remove_borders, image_to_data, image_from_data
+from calibre.utils.img import save_cover_data_to, remove_borders_from_image, image_to_data, image_from_data
 from calibre.utils.imghdr import identify
+
 
 class Worker(Thread):
 
@@ -51,18 +52,20 @@ class Worker(Thread):
                         self.plugin.name)
         self.time_spent = time.time() - start_time
 
+
 def is_worker_alive(workers):
     for w in workers:
         if w.is_alive():
             return True
     return False
 
+
 def process_result(log, result):
     plugin, data = result
     try:
         if getattr(plugin, 'auto_trim_covers', False):
             img = image_from_data(data)
-            nimg = remove_borders(img)
+            nimg = remove_borders_from_image(img)
             if nimg is not img:
                 data = image_to_data(nimg)
         fmt, width, height = identify(data)
@@ -75,6 +78,7 @@ def process_result(log, result):
         log.exception('Invalid cover from', plugin.name)
         return None
     return (plugin, width, height, fmt, data)
+
 
 def run_download(log, results, abort,
         title=None, authors=None, identifiers={}, timeout=30, get_best_cover=False):

@@ -13,11 +13,14 @@ from lxml.html.builder import HTML, HEAD, TITLE, STYLE, DIV, BODY, \
 
 from calibre import preferred_encoding, strftime, isbytestring
 
+
 def CLASS(*args, **kwargs):  # class is a reserved word in Python
     kwargs['class'] = ' '.join(args)
     return kwargs
 
 # Regular templates
+
+
 class Template(object):
 
     IS_HTML = True
@@ -51,6 +54,7 @@ class Template(object):
         return etree.tostring(self.root, encoding='utf-8', xml_declaration=True,
                 pretty_print=True)
 
+
 class EmbeddedContent(Template):
 
     def _generate(self, article, style=None, extra_css=None):
@@ -79,6 +83,7 @@ class EmbeddedContent(Template):
                 elem = SPAN(elem)
             div.append(elem)
 
+
 class IndexTemplate(Template):
 
     def _generate(self, title, masthead, datefmt, feeds, extra_css=None, style=None):
@@ -105,6 +110,7 @@ class IndexTemplate(Template):
         self.root = HTML(head, BODY(div))
         if self.html_lang:
             self.root.set('lang', self.html_lang)
+
 
 class FeedTemplate(Template):
 
@@ -135,6 +141,7 @@ class FeedTemplate(Template):
         return navbar
 
     def _generate(self, f, feeds, cutoff, extra_css=None, style=None):
+        from calibre.utils.cleantext import clean_xml_chars
         feed = feeds[f]
         head = HEAD(TITLE(feed.title))
         if style:
@@ -157,7 +164,7 @@ class FeedTemplate(Template):
                 ),
                 CLASS('calibre_feed_image')))
         if getattr(feed, 'description', None):
-            d = DIV(feed.description, CLASS('calibre_feed_description',
+            d = DIV(clean_xml_chars(feed.description), CLASS('calibre_feed_description',
                 'calibre_rescale_80'))
             d.append(BR())
             div.append(d)
@@ -173,7 +180,7 @@ class FeedTemplate(Template):
                             style='padding-bottom:0.5em')
                     )
             if article.summary:
-                li.append(DIV(cutoff(article.text_summary),
+                li.append(DIV(clean_xml_chars(cutoff(article.text_summary)),
                     CLASS('article_description', 'calibre_rescale_70')))
             ul.append(li)
         div.append(ul)
@@ -219,10 +226,10 @@ class NavBarTemplate(Template):
             navbar.append(A(_('Next'), href=href))
         href = '%s../index.html#article_%d'%(prefix, art)
         navbar.iterchildren(reversed=True).next().tail = ' | '
-        navbar.append(A(_('Section Menu'), href=href))
+        navbar.append(A(_('Section menu'), href=href))
         href = '%s../../index.html#feed_%d'%(prefix, feed)
         navbar.iterchildren(reversed=True).next().tail = ' | '
-        navbar.append(A(_('Main Menu'), href=href))
+        navbar.append(A(_('Main menu'), href=href))
         if art > 0 and not bottom:
             href = '%s../article_%d/index.html'%(prefix, art-1)
             navbar.iterchildren(reversed=True).next().tail = ' | '
@@ -277,6 +284,7 @@ class TouchscreenIndexTemplate(Template):
 class TouchscreenFeedTemplate(Template):
 
     def _generate(self, f, feeds, cutoff, extra_css=None, style=None):
+        from calibre.utils.cleantext import clean_xml_chars
 
         def trim_title(title,clip=18):
             if len(title)>clip:
@@ -346,7 +354,7 @@ class TouchscreenFeedTemplate(Template):
                 ),
                 CLASS('calibre_feed_image')))
         if getattr(feed, 'description', None):
-            d = DIV(feed.description, CLASS('calibre_feed_description',
+            d = DIV(clean_xml_chars(feed.description), CLASS('calibre_feed_description',
                 'calibre_rescale_80'))
             d.append(BR())
             div.append(d)
@@ -421,4 +429,3 @@ class TouchscreenNavBarTemplate(Template):
         # print "\n%s\n" % etree.tostring(navbar, pretty_print=True)
 
         self.root = HTML(head, BODY(navbar))
-

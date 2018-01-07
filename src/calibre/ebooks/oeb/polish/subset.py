@@ -17,6 +17,7 @@ from calibre.utils.fonts.sfnt.subset import subset
 from calibre.utils.fonts.sfnt.errors import UnsupportedFont
 from calibre.utils.fonts.utils import get_font_names
 
+
 def remove_font_face_rules(container, sheet, remove_names, base):
     changed = False
     for rule in tuple(sheet.cssRules):
@@ -32,52 +33,58 @@ def remove_font_face_rules(container, sheet, remove_names, base):
             changed = True
     return changed
 
+
+def iter_subsettable_fonts(container):
+    for name, mt in container.mime_map.iteritems():
+        if (mt in OEB_FONTS or name.rpartition('.')[-1].lower() in {'otf', 'ttf'}) and mt != guess_type('a.woff'):
+            yield name, mt
+
+
 def subset_all_fonts(container, font_stats, report):
     remove = set()
     total_old = total_new = 0
     changed = False
-    for name, mt in container.mime_map.iteritems():
-        if (mt in OEB_FONTS or name.rpartition('.')[-1].lower() in {'otf', 'ttf'}) and mt != guess_type('a.woff'):
-            chars = font_stats.get(name, set())
-            with container.open(name, 'rb') as f:
-                f.seek(0, os.SEEK_END)
-                total_old += f.tell()
-            if not chars:
-                remove.add(name)
-                report(_('Removed unused font: %s')%name)
+    for name, mt in iter_subsettable_fonts(container):
+        chars = font_stats.get(name, set())
+        with container.open(name, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            total_old += f.tell()
+        if not chars:
+            remove.add(name)
+            report(_('Removed unused font: %s')%name)
+            continue
+        with container.open(name, 'r+b') as f:
+            raw = f.read()
+            try:
+                font_name = get_font_names(raw)[-1]
+            except Exception as e:
+                container.log.warning(
+                    'Corrupted font: %s, ignoring.  Error: %s'%(
+                        name, as_unicode(e)))
                 continue
-            with container.open(name, 'r+b') as f:
-                raw = f.read()
-                try:
-                    font_name = get_font_names(raw)[-1]
-                except Exception as e:
-                    container.log.warning(
-                        'Corrupted font: %s, ignoring.  Error: %s'%(
-                            name, as_unicode(e)))
-                    continue
-                warnings = []
-                container.log('Subsetting font: %s'%(font_name or name))
-                try:
-                    nraw, old_sizes, new_sizes = subset(raw, chars,
-                                                   warnings=warnings)
-                except UnsupportedFont as e:
-                    container.log.warning(
-                        'Unsupported font: %s, ignoring.  Error: %s'%(
-                            name, as_unicode(e)))
-                    continue
+            warnings = []
+            container.log('Subsetting font: %s'%(font_name or name))
+            try:
+                nraw, old_sizes, new_sizes = subset(raw, chars,
+                                                warnings=warnings)
+            except UnsupportedFont as e:
+                container.log.warning(
+                    'Unsupported font: %s, ignoring.  Error: %s'%(
+                        name, as_unicode(e)))
+                continue
 
-                for w in warnings:
-                    container.log.warn(w)
-                olen = sum(old_sizes.itervalues())
-                nlen = sum(new_sizes.itervalues())
-                total_new += len(nraw)
-                if nlen == olen:
-                    report(_('The font %s was already subset')%font_name)
-                else:
-                    report(_('Decreased the font {0} to {1} of its original size').format(
-                        font_name, ('%.1f%%' % (nlen/olen * 100))))
-                    changed = True
-                f.seek(0), f.truncate(), f.write(nraw)
+            for w in warnings:
+                container.log.warn(w)
+            olen = sum(old_sizes.itervalues())
+            nlen = sum(new_sizes.itervalues())
+            total_new += len(nraw)
+            if nlen == olen:
+                report(_('The font %s was already subset')%font_name)
+            else:
+                report(_('Decreased the font {0} to {1} of its original size').format(
+                    font_name, ('%.1f%%' % (nlen/olen * 100))))
+                changed = True
+            f.seek(0), f.truncate(), f.write(nraw)
 
     for name in remove:
         container.remove_item(name)
@@ -103,6 +110,7 @@ def subset_all_fonts(container, font_stats, report):
         report(_('No embedded fonts found'))
     return changed
 
+
 if __name__ == '__main__':
     from calibre.ebooks.oeb.polish.container import get_container
     from calibre.ebooks.oeb.polish.stats import StatsCollector
@@ -121,4 +129,3 @@ if __name__ == '__main__':
         prints(msg)
     print()
     prints('Output written to:', outbook)
-

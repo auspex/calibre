@@ -10,8 +10,10 @@ from calibre.customize.conversion import OutputFormatPlugin, OptionRecommendatio
 from calibre import CurrentDir
 from calibre.ptempfile import PersistentTemporaryDirectory
 
+
 def relpath(*args):
     return _relpath(*args).replace(os.sep, '/')
+
 
 class HTMLOutput(OutputFormatPlugin):
 
@@ -24,10 +26,10 @@ class HTMLOutput(OutputFormatPlugin):
             help=_('CSS file used for the output instead of the default file')),
 
         OptionRecommendation(name='template_html_index',
-            help=_('Template used for generation of the html index file instead of the default file')),
+            help=_('Template used for generation of the HTML index file instead of the default file')),
 
         OptionRecommendation(name='template_html',
-            help=_('Template used for the generation of the html contents of the book instead of the default file')),
+            help=_('Template used for the generation of the HTML contents of the book instead of the default file')),
 
         OptionRecommendation(name='extract_to',
             help=_('Extract the contents of the generated ZIP file to the '

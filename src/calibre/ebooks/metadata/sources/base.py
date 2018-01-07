@@ -16,17 +16,20 @@ from calibre.utils.icu import capitalize, lower, upper
 from calibre.ebooks.metadata import check_isbn
 from calibre.utils.localization import canonicalize_lang, get_lang
 
+
 def create_log(ostream=None):
     from calibre.utils.logging import ThreadSafeLog, FileStream
     log = ThreadSafeLog(level=ThreadSafeLog.DEBUG)
     log.outputs = [FileStream(ostream)]
     return log
 
+
 # Comparing Metadata objects for relevance {{{
 words = ("the", "a", "an", "of", "and")
 prefix_pat = re.compile(r'^(%s)\s+'%("|".join(words)))
 trailing_paren_pat = re.compile(r'\(.*\)$')
 whitespace_pat = re.compile(r'\s+')
+
 
 def cleanup_title(s):
     if not s:
@@ -36,6 +39,7 @@ def cleanup_title(s):
     s = trailing_paren_pat.sub('', s)
     s = whitespace_pat.sub(' ', s)
     return s.strip()
+
 
 class InternalMetadataCompareKeyGen(object):
 
@@ -100,6 +104,7 @@ class InternalMetadataCompareKeyGen(object):
 
 # }}}
 
+
 def get_cached_cover_urls(mi):
     from calibre.customize.ui import metadata_plugins
     plugins = list(metadata_plugins(['identify']))
@@ -108,9 +113,11 @@ def get_cached_cover_urls(mi):
         if url:
             yield (p, url)
 
+
 def dump_caches():
     from calibre.customize.ui import metadata_plugins
     return {p.name:p.dump_caches() for p in metadata_plugins(['identify'])}
+
 
 def load_caches(dump):
     from calibre.customize.ui import metadata_plugins
@@ -119,6 +126,7 @@ def load_caches(dump):
         cache = dump.get(p.name, None)
         if cache:
             p.load_caches(cache)
+
 
 def cap_author_token(token):
     lt = lower(token)
@@ -147,6 +155,7 @@ def cap_author_token(token):
             ans = ans[:idx+1] + upper(ans[idx+1]) + ans[idx+2:]
     return ans
 
+
 def fixauthors(authors):
     if not authors:
         return authors
@@ -155,11 +164,13 @@ def fixauthors(authors):
         ans.append(' '.join(map(cap_author_token, x.split())))
     return ans
 
+
 def fixcase(x):
     if x:
         from calibre.utils.titlecase import titlecase
         x = titlecase(x)
     return x
+
 
 class Option(object):
     __slots__ = ['type', 'default', 'label', 'desc', 'name', 'choices']
@@ -181,6 +192,7 @@ class Option(object):
             choices = dict([(x, x) for x in choices])
         self.choices = choices
 
+
 class Source(Plugin):
 
     type = _('Metadata source')
@@ -199,11 +211,15 @@ class Source(Plugin):
     #: Set this to True if your plugin returns HTML formatted comments
     has_html_comments = False
 
-    #: Setting this to True means that the browser object will add
-    #: Accept-Encoding: gzip to all requests. This can speedup downloads
+    #: Setting this to True means that the browser object will indicate
+    #: that it supports gzip transfer encoding. This can speedup downloads
     #: but make sure that the source actually supports gzip transfer encoding
     #: correctly first
     supports_gzip_transfer_encoding = False
+
+    #: Set this to True to ignore HTTPS certificate errors when connecting
+    #: to this source.
+    ignore_ssl_errors = False
 
     #: Cached cover URLs can sometimes be unreliable (i.e. the download could
     #: fail or the returned image could be bogus. If that is often the case
@@ -282,7 +298,7 @@ class Source(Plugin):
     @property
     def browser(self):
         if self._browser is None:
-            self._browser = browser(user_agent=self.user_agent)
+            self._browser = browser(user_agent=self.user_agent, verify_ssl_certificates=not self.ignore_ssl_errors)
             if self.supports_gzip_transfer_encoding:
                 self._browser.set_handle_gzip(True)
         return self._browser.clone_browser()
@@ -585,4 +601,3 @@ class Source(Plugin):
         pass
 
     # }}}
-

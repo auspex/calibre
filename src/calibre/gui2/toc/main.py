@@ -10,6 +10,7 @@ __docformat__ = 'restructuredtext en'
 import sys, os, textwrap
 from threading import Thread
 from functools import partial
+from future_builtins import map
 
 from PyQt5.Qt import (QPushButton, QFrame, QMenu, QInputDialog,
     QDialog, QVBoxLayout, QDialogButtonBox, QSize, QStackedWidget, QWidget,
@@ -26,6 +27,7 @@ from calibre.gui2.convert.xpath_wizard import XPathEdit
 from calibre.utils.logging import GUILog
 
 ICON_SIZE = 24
+
 
 class XPathDialog(QDialog):  # {{{
 
@@ -119,6 +121,7 @@ class XPathDialog(QDialog):  # {{{
     def xpaths(self):
         return [w.xpath for w in self.widgets if w.xpath.strip()]
 # }}}
+
 
 class ItemView(QFrame):  # {{{
 
@@ -351,12 +354,19 @@ class ItemView(QFrame):  # {{{
 
 # }}}
 
+
+NODE_FLAGS = (Qt.ItemIsDragEnabled|Qt.ItemIsEditable|Qt.ItemIsEnabled|
+                        Qt.ItemIsSelectable|Qt.ItemIsDropEnabled)
+
+
 class TreeWidget(QTreeWidget):  # {{{
 
     edit_item = pyqtSignal()
+    history_state_changed = pyqtSignal()
 
     def __init__(self, parent):
         QTreeWidget.__init__(self, parent)
+        self.history = []
         self.setHeaderLabel(_('Table of Contents'))
         self.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
         self.setDragEnabled(True)
@@ -375,6 +385,15 @@ class TreeWidget(QTreeWidget):  # {{{
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
+    def push_history(self):
+        self.history.append(self.serialize_tree())
+        self.history_state_changed.emit()
+
+    def pop_history(self):
+        if self.history:
+            self.unserialize_tree(self.history.pop())
+            self.history_state_changed.emit()
+
     def iteritems(self, parent=None):
         if parent is None:
             parent = self.invisibleRootItem()
@@ -384,8 +403,54 @@ class TreeWidget(QTreeWidget):  # {{{
             for gc in self.iteritems(parent=child):
                 yield gc
 
+    def update_status_tip(self, item):
+        c = item.data(0, Qt.UserRole)
+        if c is not None:
+            frag = c.frag or ''
+            if frag:
+                frag = '#'+frag
+            item.setStatusTip(0, _('<b>Title</b>: {0} <b>Dest</b>: {1}{2}').format(
+                c.title, c.dest, frag))
+
+    def serialize_tree(self):
+
+        def serialize_node(node):
+            return {
+                'title': node.data(0, Qt.DisplayRole),
+                'toc_node': node.data(0, Qt.UserRole),
+                'icon': node.data(0, Qt.DecorationRole),
+                'tooltip': node.data(0, Qt.ToolTipRole),
+                'is_selected': node.isSelected(),
+                'is_expanded': node.isExpanded(),
+                'children': list(map(serialize_node, (node.child(i) for i in range(node.childCount())))),
+            }
+
+        node = self.invisibleRootItem()
+        return {'children': list(map(serialize_node, (node.child(i) for i in range(node.childCount()))))}
+
+    def unserialize_tree(self, serialized):
+
+        def unserialize_node(dict_node, parent):
+            n = QTreeWidgetItem(parent)
+            n.setData(0, Qt.DisplayRole, dict_node['title'])
+            n.setData(0, Qt.UserRole, dict_node['toc_node'])
+            n.setFlags(NODE_FLAGS)
+            n.setData(0, Qt.DecorationRole, dict_node['icon'])
+            n.setData(0, Qt.ToolTipRole, dict_node['tooltip'])
+            self.update_status_tip(n)
+            n.setExpanded(dict_node['is_expanded'])
+            n.setSelected(dict_node['is_selected'])
+            for c in dict_node['children']:
+                unserialize_node(c, n)
+
+        i = self.invisibleRootItem()
+        i.takeChildren()
+        for child in serialized['children']:
+            unserialize_node(child, i)
+
     def dropEvent(self, event):
         self.in_drop_event = True
+        self.push_history()
         try:
             super(TreeWidget, self).dropEvent(event)
         finally:
@@ -398,7 +463,7 @@ class TreeWidget(QTreeWidget):  # {{{
             # have to ensure that selectedIndexes returns an ordered list of
             # indexes.
             sort_map = {self.indexFromItem(item):i for i, item in enumerate(self.iteritems())}
-            ans = sorted(ans, key=lambda x:sort_map.get(x, -1), reverse=True)
+            ans = sorted(ans, key=lambda x:sort_map.get(x, -1))
         return ans
 
     def highlight_item(self, item):
@@ -407,14 +472,16 @@ class TreeWidget(QTreeWidget):  # {{{
 
     def check_multi_selection(self):
         if len(self.selectedItems()) > 1:
-            return info_dialog(self, _('Multiple items selected'), _(
+            info_dialog(self, _('Multiple items selected'), _(
                 'You are trying to move multiple items at once, this is not supported. Instead use'
                 ' Drag and Drop to move multiple items'), show=True)
+            return False
         return True
 
     def move_left(self):
         if not self.check_multi_selection():
             return
+        self.push_history()
         item = self.currentItem()
         if item is not None:
             parent = item.parent()
@@ -434,6 +501,7 @@ class TreeWidget(QTreeWidget):  # {{{
     def move_right(self):
         if not self.check_multi_selection():
             return
+        self.push_history()
         item = self.currentItem()
         if item is not None:
             parent = item.parent() or self.invisibleRootItem()
@@ -450,6 +518,7 @@ class TreeWidget(QTreeWidget):  # {{{
     def move_down(self):
         if not self.check_multi_selection():
             return
+        self.push_history()
         item = self.currentItem()
         if item is None:
             if self.root.childCount() == 0:
@@ -475,6 +544,7 @@ class TreeWidget(QTreeWidget):  # {{{
     def move_up(self):
         if not self.check_multi_selection():
             return
+        self.push_history()
         item = self.currentItem()
         if item is None:
             if self.root.childCount() == 0:
@@ -498,20 +568,43 @@ class TreeWidget(QTreeWidget):  # {{{
         self.highlight_item(item)
 
     def del_items(self):
+        self.push_history()
         for item in self.selectedItems():
             p = item.parent() or self.root
             p.removeChild(item)
 
     def title_case(self):
+        self.push_history()
         from calibre.utils.titlecase import titlecase
         for item in self.selectedItems():
             t = unicode(item.data(0, Qt.DisplayRole) or '')
             item.setData(0, Qt.DisplayRole, titlecase(t))
 
     def upper_case(self):
+        self.push_history()
         for item in self.selectedItems():
             t = unicode(item.data(0, Qt.DisplayRole) or '')
             item.setData(0, Qt.DisplayRole, icu_upper(t))
+
+    def lower_case(self):
+        self.push_history()
+        for item in self.selectedItems():
+            t = unicode(item.data(0, Qt.DisplayRole) or '')
+            item.setData(0, Qt.DisplayRole, icu_lower(t))
+
+    def swap_case(self):
+        self.push_history()
+        from calibre.utils.icu import swapcase
+        for item in self.selectedItems():
+            t = unicode(item.data(0, Qt.DisplayRole) or '')
+            item.setData(0, Qt.DisplayRole, swapcase(t))
+
+    def capitalize(self):
+        self.push_history()
+        from calibre.utils.icu import capitalize
+        for item in self.selectedItems():
+            t = unicode(item.data(0, Qt.DisplayRole) or '')
+            item.setData(0, Qt.DisplayRole, capitalize(t))
 
     def bulk_rename(self):
         from calibre.gui2.tweak_book.file_list import get_bulk_rename_settings
@@ -520,6 +613,7 @@ class TreeWidget(QTreeWidget):  # {{{
         fmt, num = get_bulk_rename_settings(self, len(items), prefix=_('Chapter '), msg=_(
             'All selected items will be renamed to the form prefix-number'), sanitize=lambda x:x, leading_zeros=False)
         if fmt is not None and num is not None:
+            self.push_history()
             for i, item in enumerate(items):
                 item.setData(0, Qt.DisplayRole, fmt % (num + i))
 
@@ -530,10 +624,10 @@ class TreeWidget(QTreeWidget):  # {{{
         elif ev.key() == Qt.Key_Right and ev.modifiers() & Qt.CTRL:
             self.move_right()
             ev.accept()
-        elif ev.key() == Qt.Key_Up and ev.modifiers() & Qt.CTRL:
+        elif ev.key() == Qt.Key_Up and (ev.modifiers() & Qt.CTRL or ev.modifiers() & Qt.ALT):
             self.move_up()
             ev.accept()
-        elif ev.key() == Qt.Key_Down and ev.modifiers() & Qt.CTRL:
+        elif ev.key() == Qt.Key_Down and (ev.modifiers() & Qt.CTRL or ev.modifiers() & Qt.ALT):
             self.move_down()
             ev.accept()
         elif ev.key() in (Qt.Key_Delete, Qt.Key_Backspace):
@@ -544,12 +638,17 @@ class TreeWidget(QTreeWidget):  # {{{
 
     def show_context_menu(self, point):
         item = self.currentItem()
+
         def key(k):
             sc = unicode(QKeySequence(k | Qt.CTRL).toString(QKeySequence.NativeText))
             return ' [%s]'%sc
 
         if item is not None:
             m = QMenu()
+            m.addAction(QIcon(I('edit_input.png')), _('Change the location this entry points to'), self.edit_item)
+            m.addAction(QIcon(I('modified.png')), _('Bulk rename all selected items'), self.bulk_rename)
+            m.addAction(QIcon(I('trash.png')), _('Remove all selected items'), self.del_items)
+            m.addSeparator()
             ci = unicode(item.data(0, Qt.DisplayRole) or '')
             p = item.parent() or self.invisibleRootItem()
             idx = p.indexOfChild(item)
@@ -557,17 +656,23 @@ class TreeWidget(QTreeWidget):  # {{{
                 m.addAction(QIcon(I('arrow-up.png')), (_('Move "%s" up')%ci)+key(Qt.Key_Up), self.move_up)
             if idx + 1 < p.childCount():
                 m.addAction(QIcon(I('arrow-down.png')), (_('Move "%s" down')%ci)+key(Qt.Key_Down), self.move_down)
-            m.addAction(QIcon(I('trash.png')), _('Remove all selected items'), self.del_items)
             if item.parent() is not None:
                 m.addAction(QIcon(I('back.png')), (_('Unindent "%s"')%ci)+key(Qt.Key_Left), self.move_left)
             if idx > 0:
                 m.addAction(QIcon(I('forward.png')), (_('Indent "%s"')%ci)+key(Qt.Key_Right), self.move_right)
-            m.addAction(QIcon(I('edit_input.png')), _('Change the location this entry points to'), self.edit_item)
-            m.addAction(_('Change all selected items to title case'), self.title_case)
-            m.addAction(_('Change all selected items to upper case'), self.upper_case)
-            m.addAction(QIcon(I('modified.png')), _('Bulk rename all selected items'), self.bulk_rename)
+
+            m.addSeparator()
+            case_menu = QMenu(_('Change case'))
+            case_menu.addAction(_('Upper case'), self.upper_case)
+            case_menu.addAction(_('Lower case'), self.lower_case)
+            case_menu.addAction(_('Swap case'), self.swap_case)
+            case_menu.addAction(_('Title case'), self.title_case)
+            case_menu.addAction(_('Capitalize'), self.capitalize)
+            m.addMenu(case_menu)
+
             m.exec_(QCursor.pos())
 # }}}
+
 
 class TOCView(QWidget):  # {{{
 
@@ -575,6 +680,7 @@ class TOCView(QWidget):  # {{{
 
     def __init__(self, parent, prefs):
         QWidget.__init__(self, parent)
+        self.toc_title = None
         self.prefs = prefs
         l = self.l = QGridLayout()
         self.setLayout(l)
@@ -657,6 +763,7 @@ class TOCView(QWidget):  # {{{
     def delete_current_item(self):
         item = self.tocw.currentItem()
         if item is not None:
+            self.tocw.push_history()
             p = item.parent() or self.root
             p.removeChild(item)
 
@@ -665,6 +772,7 @@ class TOCView(QWidget):  # {{{
             yield item
 
     def flatten_toc(self):
+        self.tocw.push_history()
         found = True
         while found:
             found = False
@@ -675,6 +783,7 @@ class TOCView(QWidget):  # {{{
                     break
 
     def flatten_item(self):
+        self.tocw.push_history()
         self._flatten_item(self.tocw.currentItem())
 
     def _flatten_item(self, item):
@@ -698,15 +807,6 @@ class TOCView(QWidget):  # {{{
     def move_down(self):
         self.tocw.move_down()
 
-    def update_status_tip(self, item):
-        c = item.data(0, Qt.UserRole)
-        if c is not None:
-            frag = c.frag or ''
-            if frag:
-                frag = '#'+frag
-            item.setStatusTip(0, _('<b>Title</b>: {0} <b>Dest</b>: {1}{2}').format(
-                c.title, c.dest, frag))
-
     def data_changed(self, top_left, bottom_right):
         for r in xrange(top_left.row(), bottom_right.row()+1):
             idx = self.tocw.model().index(r, 0, top_left.parent())
@@ -715,7 +815,7 @@ class TOCView(QWidget):  # {{{
             if toc is not None:
                 toc.title = new_title or _('(Untitled)')
             item = self.tocw.itemFromIndex(idx)
-            self.update_status_tip(item)
+            self.tocw.update_status_tip(item)
             self.item_view.data_changed(item)
 
     def create_item(self, parent, child, idx=-1):
@@ -730,8 +830,7 @@ class TOCView(QWidget):  # {{{
     def populate_item(self, c, child):
         c.setData(0, Qt.DisplayRole, child.title or _('(Untitled)'))
         c.setData(0, Qt.UserRole, child)
-        c.setFlags(Qt.ItemIsDragEnabled|Qt.ItemIsEditable|Qt.ItemIsEnabled|
-                    Qt.ItemIsSelectable|Qt.ItemIsDropEnabled)
+        c.setFlags(NODE_FLAGS)
         c.setData(0, Qt.DecorationRole, self.icon_map[child.dest_exists])
         if child.dest_exists is False:
             c.setData(0, Qt.ToolTipRole, _(
@@ -740,7 +839,7 @@ class TOCView(QWidget):  # {{{
         else:
             c.setData(0, Qt.ToolTipRole, None)
 
-        self.update_status_tip(c)
+        self.tocw.update_status_tip(c)
 
     def __call__(self, ebook):
         self.ebook = ebook
@@ -748,6 +847,7 @@ class TOCView(QWidget):  # {{{
             self.item_view.hide_azw3_warning()
         self.toc = get_toc(self.ebook)
         self.toc_lang, self.toc_uid = self.toc.lang, self.toc.uid
+        self.toc_title = self.toc.toc_title
         self.blank = QIcon(I('blank.png'))
         self.ok = QIcon(I('ok.png'))
         self.err = QIcon(I('dot_red.png'))
@@ -773,6 +873,7 @@ class TOCView(QWidget):  # {{{
             frag = add_id(self.ebook, name, *frag)
         child = TOC(title, name, frag)
         child.dest_exists = True
+        self.tocw.push_history()
         if item is None:
             # New entry at root level
             c = self.create_item(self.root, child)
@@ -818,6 +919,7 @@ class TOCView(QWidget):  # {{{
                 added.append(item)
                 process_node(item, child, added)
 
+        self.tocw.push_history()
         nodes = []
         process_node(self.root, toc, nodes)
         self.highlight_item(nodes[0])
@@ -842,6 +944,9 @@ class TOCView(QWidget):  # {{{
             return error_dialog(self, _('No items found'),
                 _('No files were found that could be added to the Table of Contents.'), show=True)
         self.insert_toc_fragment(toc)
+
+    def undo(self):
+        self.tocw.pop_history()
 
 
 # }}}
@@ -877,10 +982,12 @@ class TOCEditor(QDialog):  # {{{
         ll.addWidget(pi, alignment=Qt.AlignHCenter|Qt.AlignCenter)
         la = self.wait_label = QLabel(_('Loading %s, please wait...')%t)
         la.setWordWrap(True)
-        la.setStyleSheet('QLabel { font-size: 20pt }')
+        f = la.font()
+        f.setPointSize(20), la.setFont(f)
         ll.addWidget(la, alignment=Qt.AlignHCenter|Qt.AlignTop)
         self.toc_view = TOCView(self, self.prefs)
         self.toc_view.add_new_item.connect(self.add_new_item)
+        self.toc_view.tocw.history_state_changed.connect(self.update_history_buttons)
         s.addWidget(self.toc_view)
         self.item_edit = ItemEdit(self)
         s.addWidget(self.item_edit)
@@ -889,6 +996,10 @@ class TOCEditor(QDialog):  # {{{
         l.addWidget(bb)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
+        self.undo_button = b = bb.addButton(_('&Undo'), bb.ActionRole)
+        b.setToolTip(_('Undo the last action, if any'))
+        b.setIcon(QIcon(I('edit-undo.png')))
+        b.clicked.connect(self.toc_view.undo)
 
         self.explode_done.connect(self.read_toc, type=Qt.QueuedConnection)
         self.writing_done.connect(self.really_accept, type=Qt.QueuedConnection)
@@ -897,6 +1008,12 @@ class TOCEditor(QDialog):  # {{{
         geom = self.prefs.get('toc_editor_window_geom', None)
         if geom is not None:
             self.restoreGeometry(bytes(geom))
+        self.stacks.currentChanged.connect(self.update_history_buttons)
+        self.update_history_buttons()
+
+    def update_history_buttons(self):
+        self.undo_button.setVisible(self.stacks.currentIndex() == 1)
+        self.undo_button.setEnabled(bool(self.toc_view.tocw.history))
 
     def add_new_item(self, item, where):
         self.item_edit(item, where)
@@ -972,6 +1089,7 @@ class TOCEditor(QDialog):  # {{{
         tb = None
         try:
             toc = self.toc_view.create_toc()
+            toc.toc_title = getattr(self.toc_view, 'toc_title', None)
             commit_toc(self.ebook, toc, lang=self.toc_view.toc_lang,
                     uid=self.toc_view.toc_uid)
             self.ebook.commit()
@@ -981,6 +1099,7 @@ class TOCEditor(QDialog):  # {{{
         self.writing_done.emit(tb)
 
 # }}}
+
 
 if __name__ == '__main__':
     app = Application([], force_calibre_style=True)

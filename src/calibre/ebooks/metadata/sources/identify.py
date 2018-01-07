@@ -29,6 +29,8 @@ from calibre.utils.date import UNDEFINED_DATE
 from calibre.utils.formatter import EvalFormatter
 
 # Download worker {{{
+
+
 class Worker(Thread):
 
     def __init__(self, plugin, kwargs, abort):
@@ -52,6 +54,7 @@ class Worker(Thread):
     def name(self):
         return self.plugin.name
 
+
 def is_worker_alive(workers):
     for w in workers:
         if w.is_alive():
@@ -61,6 +64,7 @@ def is_worker_alive(workers):
 # }}}
 
 # Merge results from different sources {{{
+
 
 class xISBN(Thread):
 
@@ -363,14 +367,17 @@ def merge_identify_results(result_map, log):
 
 # }}}
 
+
 def identify(log, abort,  # {{{
-        title=None, authors=None, identifiers={}, timeout=30):
+        title=None, authors=None, identifiers={}, timeout=30, allowed_plugins=None):
     if title == _('Unknown'):
         title = None
     if authors == [_('Unknown')]:
         authors = None
     start_time = time.time()
-    plugins = [p for p in metadata_plugins(['identify']) if p.is_configured()]
+
+    plugins = [p for p in metadata_plugins(['identify'])
+        if p.is_configured() and (allowed_plugins is None or p.name in allowed_plugins)]
 
     kwargs = {
         'title': title,
@@ -381,7 +388,7 @@ def identify(log, abort,  # {{{
 
     log('Running identify query with parameters:')
     log(kwargs)
-    log('Using plugins:', ', '.join([p.name for p in plugins]))
+    log('Using plugins:', ', '.join(['%s %s' % (p.name, p.version) for p in plugins]))
     log('The log from individual plugins is below')
 
     workers = [Worker(p, kwargs, abort) for p in plugins]
@@ -450,8 +457,7 @@ def identify(log, abort,  # {{{
         results[plugin] = presults = filtered_results
 
         plog = logs[plugin].getvalue().strip()
-        log('\n'+'*'*30, plugin.name, '*'*30)
-        log('Request extra headers:', plugin.browser.addheaders)
+        log('\n'+'*'*30, plugin.name, '%s' % (plugin.version,), '*'*30)
         log('Found %d results'%len(presults))
         time_spent = getattr(plugin, 'dl_time_spent', None)
         if time_spent is None:
@@ -523,14 +529,21 @@ def identify(log, abort,  # {{{
     return results
 # }}}
 
+
 def urls_from_identifiers(identifiers):  # {{{
     identifiers = {k.lower():v for k, v in identifiers.iteritems()}
     ans = []
+    keys_left = set(identifiers)
+
+    def add(name, k, val, url):
+        ans.append((name, k, val, url))
+        keys_left.discard(k)
+
     rules = msprefs['id_link_rules']
     if rules:
         formatter = EvalFormatter()
         for k, val in identifiers.iteritems():
-            vals = {'id':quote(val)}
+            vals = {'id':quote(val if isinstance(val, bytes) else val.encode('utf-8')).decode('ascii')}
             items = rules.get(k) or ()
             for name, template in items:
                 try:
@@ -539,42 +552,52 @@ def urls_from_identifiers(identifiers):  # {{{
                     import traceback
                     traceback.format_exc()
                     continue
-                ans.append((name, k, val, url))
+                add(name, k, val, url)
     for plugin in all_metadata_plugins():
         try:
             for id_type, id_val, url in plugin.get_book_urls(identifiers):
-                ans.append((plugin.get_book_url_name(id_type, id_val, url), id_type, id_val, url))
-        except:
+                add(plugin.get_book_url_name(id_type, id_val, url), id_type, id_val, url)
+        except Exception:
             pass
     isbn = identifiers.get('isbn', None)
     if isbn:
-        ans.append((isbn, 'isbn', isbn,
-            'http://www.worldcat.org/isbn/'+isbn))
+        add(isbn, 'isbn', isbn,
+            'https://www.worldcat.org/isbn/'+isbn)
     doi = identifiers.get('doi', None)
     if doi:
-        ans.append(('DOI', 'doi', doi,
-            'http://dx.doi.org/'+doi))
+        add('DOI', 'doi', doi,
+            'https://dx.doi.org/'+doi)
     arxiv = identifiers.get('arxiv', None)
     if arxiv:
-        ans.append(('arXiv', 'arxiv', arxiv,
-            'http://arxiv.org/abs/'+arxiv))
+        add('arXiv', 'arxiv', arxiv,
+            'https://arxiv.org/abs/'+arxiv)
     oclc = identifiers.get('oclc', None)
     if oclc:
-        ans.append(('OCLC', 'oclc', oclc,
-            'http://www.worldcat.org/oclc/'+oclc))
+        add('OCLC', 'oclc', oclc,
+            'https://www.worldcat.org/oclc/'+oclc)
     issn = check_issn(identifiers.get('issn', None))
     if issn:
-        ans.append((issn, 'issn', issn,
-            'http://www.worldcat.org/issn/'+issn))
+        add(issn, 'issn', issn,
+            'https://www.worldcat.org/issn/'+issn)
+    q = {'http', 'https', 'file'}
     for k, url in identifiers.iteritems():
         if url and re.match(r'ur[il]\d*$', k) is not None:
             url = url[:8].replace('|', ':') + url[8:].replace('|', ',')
-            if url.partition(':')[0].lower() in {'http', 'file', 'https'}:
+            if url.partition(':')[0].lower() in q:
                 parts = urlparse(url)
                 name = parts.netloc or parts.path
-                ans.append((name, k, url, url))
+                add(name, k, url, url)
+    for k in tuple(keys_left):
+        val = identifiers.get(k)
+        if val:
+            url = val[:8].replace('|', ':') + val[8:].replace('|', ',')
+            if url.partition(':')[0].lower() in q:
+                parts = urlparse(url)
+                name = parts.netloc or parts.path
+                add(name, k, url, url)
     return ans
 # }}}
+
 
 if __name__ == '__main__':  # tests {{{
     # To run these test use: calibre-debug -e
@@ -622,4 +645,3 @@ if __name__ == '__main__':  # tests {{{
     # test_identify(tests[1:2])
     test_identify(tests)
 # }}}
-

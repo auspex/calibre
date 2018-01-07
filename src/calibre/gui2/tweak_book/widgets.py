@@ -16,9 +16,11 @@ from PyQt5.Qt import (
     QPainter, QStaticText, pyqtSignal, QTextOption, QAbstractListModel,
     QModelIndex, QStyledItemDelegate, QStyle, QCheckBox, QListView,
     QTextDocument, QSize, QComboBox, QFrame, QCursor, QGroupBox, QSplitter,
-    QPixmap, QRect, QPlainTextEdit, pyqtSlot, QMimeData, QKeySequence)
+    QPixmap, QRect, QPlainTextEdit, QMimeData)
 
 from calibre import prepare_string_for_xml, human_readable
+from calibre.constants import iswindows
+from calibre.ebooks.oeb.polish.cover import get_raster_cover_name
 from calibre.ebooks.oeb.polish.utils import lead_text, guess_type
 from calibre.gui2 import error_dialog, choose_files, choose_save_file, info_dialog, choose_images
 from calibre.gui2.tweak_book import tprefs, current_container
@@ -30,6 +32,7 @@ from calibre.gui2.complete2 import EditWithComplete
 ROOT = QModelIndex()
 PARAGRAPH_SEPARATOR = '\u2029'
 
+
 class BusyCursor(object):
 
     def __enter__(self):
@@ -38,10 +41,12 @@ class BusyCursor(object):
     def __exit__(self, *args):
         QApplication.restoreOverrideCursor()
 
+
 class Dialog(BaseDialog):
 
     def __init__(self, title, name, parent=None):
         BaseDialog.__init__(self, title, name, parent=parent, prefs=tprefs)
+
 
 class InsertTag(Dialog):  # {{{
 
@@ -75,6 +80,7 @@ class InsertTag(Dialog):  # {{{
             print (d.tag)
 
 # }}}
+
 
 class RationalizeFolders(Dialog):  # {{{
 
@@ -117,7 +123,7 @@ class RationalizeFolders(Dialog):  # {{{
             l.addWidget(le, i + 1, 1)
         self.la2 = la = QLabel(_(
             'Note that this will only arrange files inside the book,'
-            ' it will not affect how they are displayed in the Files Browser'))
+            ' it will not affect how they are displayed in the File browser'))
         la.setWordWrap(True)
         l.addWidget(la, i + 2, 0, 1, -1)
         l.addWidget(self.bb, i + 3, 0, 1, -1)
@@ -134,6 +140,7 @@ class RationalizeFolders(Dialog):  # {{{
         tprefs['folders_for_types'] = self.folder_map
         return Dialog.accept(self)
 # }}}
+
 
 class MultiSplit(Dialog):  # {{{
 
@@ -169,6 +176,7 @@ class MultiSplit(Dialog):  # {{{
 
 # }}}
 
+
 class ImportForeign(Dialog):  # {{{
 
     def __init__(self, parent=None):
@@ -181,6 +189,7 @@ class ImportForeign(Dialog):  # {{{
 
     def setup_ui(self):
         self.l = l = QFormLayout(self)
+        l.setFieldGrowthPolicy(l.AllNonFixedFieldsGrow)
         self.setLayout(l)
 
         la = self.la = QLabel(_(
@@ -198,7 +207,7 @@ class ImportForeign(Dialog):  # {{{
         b.setIcon(QIcon(I('document_open.png')))
         b.setText(_('Choose file'))
         h1.addWidget(b)
-        l.addRow(_('Source file'), h1)
+        l.addRow(_('Source file:'), h1)
         b.clicked.connect(self.choose_source)
         b.setFocus(Qt.OtherFocusReason)
 
@@ -210,7 +219,7 @@ class ImportForeign(Dialog):  # {{{
         b.setIcon(QIcon(I('document_open.png')))
         b.setText(_('Choose file'))
         h1.addWidget(b)
-        l.addRow(_('Destination file'), h1)
+        l.addRow(_('Destination file:'), h1)
         b.clicked.connect(self.choose_destination)
 
         l.addRow(self.bb)
@@ -251,6 +260,7 @@ class ImportForeign(Dialog):  # {{{
 
 # Quick Open {{{
 
+
 def make_highlighted_text(emph, text, positions):
     positions = sorted(set(positions) - {-1})
     if positions:
@@ -264,6 +274,7 @@ def make_highlighted_text(emph, text, positions):
         parts.append(prepare_string_for_xml(text[pos:]))
         return ''.join(parts)
     return text
+
 
 class Results(QWidget):
 
@@ -395,6 +406,7 @@ class Results(QWidget):
         except IndexError:
             pass
 
+
 class QuickOpen(Dialog):
 
     def __init__(self, items, parent=None):
@@ -469,6 +481,7 @@ class QuickOpen(Dialog):
 
 # Filterable names list {{{
 
+
 class NamesDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
@@ -507,6 +520,7 @@ class NamesDelegate(QStyledItemDelegate):
             painter.translate(option.rect.left(), option.rect.top() + (max(0, option.rect.height() - height) // 2))
             doc.drawContents(painter)
         painter.restore()
+
 
 class NamesModel(QAbstractListModel):
 
@@ -552,6 +566,7 @@ class NamesModel(QAbstractListModel):
         except IndexError:
             pass
 
+
 def create_filterable_names_list(names, filter_text=None, parent=None, model=NamesModel):
     nl = QListView(parent)
     nl.m = m = model(names, parent=nl)
@@ -568,6 +583,7 @@ def create_filterable_names_list(names, filter_text=None, parent=None, model=Nam
 # }}}
 
 # Insert Link {{{
+
 
 class AnchorsModel(QAbstractListModel):
 
@@ -601,13 +617,14 @@ class AnchorsModel(QAbstractListModel):
         self.endResetModel()
         self.filtered.emit(not bool(query))
 
+
 class InsertLink(Dialog):
 
     def __init__(self, container, source_name, initial_text=None, parent=None):
         self.container = container
         self.source_name = source_name
         self.initial_text = initial_text
-        Dialog.__init__(self, _('Insert Hyperlink'), 'insert-hyperlink', parent=parent)
+        Dialog.__init__(self, _('Insert hyperlink'), 'insert-hyperlink', parent=parent)
         self.anchor_cache = {}
 
     def sizeHint(self):
@@ -642,6 +659,7 @@ class InsertLink(Dialog):
         h.addLayout(fnl), h.setStretch(1, 1)
 
         self.tl = tl = QFormLayout()
+        tl.setFieldGrowthPolicy(tl.AllNonFixedFieldsGrow)
         self.target = t = QLineEdit(self)
         t.setPlaceholderText(_('The destination (href) for the link'))
         tl.addRow(_('&Target:'), t)
@@ -670,6 +688,8 @@ class InsertLink(Dialog):
             ac = self.anchor_cache[name] = []
             for item in set(root.xpath('//*[@id]')) | set(root.xpath('//h:a[@name]', namespaces={'h':XHTML_NS})):
                 frag = item.get('id', None) or item.get('name')
+                if not frag:
+                    continue
                 text = lead_text(item, num_words=4)
                 ac.append((text, frag))
             ac.sort(key=lambda text_frag: primary_sort_key(text_frag[0]))
@@ -715,6 +735,7 @@ class InsertLink(Dialog):
 
 # Insert Semantics {{{
 
+
 class InsertSemantics(Dialog):
 
     def __init__(self, container, parent=None):
@@ -724,7 +745,7 @@ class InsertSemantics(Dialog):
             for item in container.opf_xpath('//opf:guide/opf:reference[@href and @type]')}
         self.final_type_map = self.original_type_map.copy()
         self.create_known_type_map()
-        Dialog.__init__(self, _('Set Semantics'), 'insert-semantics', parent=parent)
+        Dialog.__init__(self, _('Set semantics'), 'insert-semantics', parent=parent)
 
     def sizeHint(self):
         return QSize(800, 600)
@@ -743,8 +764,8 @@ class InsertSemantics(Dialog):
             'dedication': _('Dedication'),
             'epigraph': _('Epigraph'),
             'foreword': _('Foreword'),
-            'loi': _('List of Illustrations'),
-            'lot': _('List of Tables'),
+            'loi': _('List of illustrations'),
+            'lot': _('List of tables'),
             'notes': _('Notes'),
             'preface': _('Preface'),
             'text': _('Text'),
@@ -812,7 +833,7 @@ class InsertSemantics(Dialog):
         d = info_dialog(self, _('About semantics'), _(
             'Semantics refer to additional information about specific locations in the book.'
             ' For example, you can specify that a particular location is the dedication or the preface'
-            ' or the table of contents and so on.\n\nFirst choose the type of semantic information, then'
+            ' or the Table of Contents and so on.\n\nFirst choose the type of semantic information, then'
             ' choose a file and optionally a location within the file to point to.\n\nThe'
             ' semantic information will be written in the <guide> section of the opf file.'))
         d.resize(d.sizeHint())
@@ -907,11 +928,12 @@ class InsertSemantics(Dialog):
 
 # }}}
 
+
 class FilterCSS(Dialog):  # {{{
 
     def __init__(self, current_name=None, parent=None):
         self.current_name = current_name
-        Dialog.__init__(self, _('Filter Style Information'), 'filter-css', parent=parent)
+        Dialog.__init__(self, _('Filter style information'), 'filter-css', parent=parent)
 
     def setup_ui(self):
         from calibre.gui2.convert.look_and_feel_ui import Ui_Form
@@ -978,6 +1000,7 @@ class FilterCSS(Dialog):  # {{{
 
 # Add Cover {{{
 
+
 class CoverView(QWidget):
 
     def __init__(self, parent=None):
@@ -1014,6 +1037,7 @@ class CoverView(QWidget):
 
     def sizeHint(self):
         return QSize(300, 400)
+
 
 class AddCover(Dialog):
 
@@ -1069,6 +1093,11 @@ class AddCover(Dialog):
         b.setIcon(QIcon(I('document_open.png')))
         self.names.setFocus(Qt.OtherFocusReason)
         self.names.selectionModel().currentChanged.connect(self.current_image_changed)
+        cname = get_raster_cover_name(self.container)
+        if cname:
+            row = self.names.model().find_name(cname)
+            if row > -1:
+                self.names.setCurrentIndex(self.names.model().index(row))
 
     def double_clicked(self):
         self.accept()
@@ -1113,14 +1142,14 @@ class AddCover(Dialog):
 
 # }}}
 
+
 class PlainTextEdit(QPlainTextEdit):  # {{{
 
     ''' A class that overrides some methods from QPlainTextEdit to fix handling
-    of the nbsp unicode character. '''
+    of the nbsp unicode character and AltGr input method on windows. '''
 
     def __init__(self, parent=None):
         QPlainTextEdit.__init__(self, parent)
-        self.selectionChanged.connect(self.selection_changed)
         self.syntax = None
 
     def toPlainText(self):
@@ -1136,22 +1165,6 @@ class PlainTextEdit(QPlainTextEdit):  # {{{
         # non BMP characters such as 0x1f431 are present.
         return ans.rstrip('\0')
 
-    @pyqtSlot()
-    def copy(self):
-        # Workaround Qt replacing nbsp with normal spaces on copy
-        c = self.textCursor()
-        if not c.hasSelection():
-            return
-        md = QMimeData()
-        md.setText(self.selected_text)
-        QApplication.clipboard().setMimeData(md)
-
-    @pyqtSlot()
-    def cut(self):
-        # Workaround Qt replacing nbsp with normal spaces on copy
-        self.copy()
-        self.textCursor().removeSelectedText()
-
     def selected_text_from_cursor(self, cursor):
         return unicodedata.normalize('NFC', unicode(cursor.selectedText()).replace(PARAGRAPH_SEPARATOR, '\n').rstrip('\0'))
 
@@ -1159,21 +1172,37 @@ class PlainTextEdit(QPlainTextEdit):  # {{{
     def selected_text(self):
         return self.selected_text_from_cursor(self.textCursor())
 
-    def selection_changed(self):
-        # Workaround Qt replacing nbsp with normal spaces on copy
-        clipboard = QApplication.clipboard()
-        if clipboard.supportsSelection() and self.textCursor().hasSelection():
-            md = QMimeData()
-            md.setText(self.selected_text)
-            clipboard.setMimeData(md, clipboard.Selection)
+    def createMimeDataFromSelection(self):
+        ans = QMimeData()
+        ans.setText(self.selected_text)
+        return ans
+
+    def show_tooltip(self, ev):
+        pass
+
+    def override_shortcut(self, ev):
+        if iswindows and self.windows_ignore_altgr_shortcut(ev):
+            ev.accept()
+            return True
+
+    def windows_ignore_altgr_shortcut(self, ev):
+        import win32api, win32con
+        s = win32api.GetAsyncKeyState(win32con.VK_RMENU) & 0xffff  # VK_RMENU == R_ALT
+        return s & 0x8000
 
     def event(self, ev):
-        if ev.type() == ev.ShortcutOverride and ev in (QKeySequence.Copy, QKeySequence.Cut):
-            ev.accept()
-            (self.copy if ev == QKeySequence.Copy else self.cut)()
+        et = ev.type()
+        if et == ev.ToolTip:
+            self.show_tooltip(ev)
             return True
+        if et == ev.ShortcutOverride:
+            ret = self.override_shortcut(ev)
+            if ret:
+                return True
         return QPlainTextEdit.event(self, ev)
+
 # }}}
+
 
 if __name__ == '__main__':
     app = QApplication([])

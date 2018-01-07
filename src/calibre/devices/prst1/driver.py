@@ -28,14 +28,17 @@ from calibre.constants import islinux
 DBPATH = 'Sony_Reader/database/books.db'
 THUMBPATH = 'Sony_Reader/database/cache/books/%s/thumbnail/main_thumbnail.jpg'
 
+
 class ImageWrapper(object):
+
     def __init__(self, image_path):
         self.image_path = image_path
+
 
 class PRST1(USBMS):
     name           = 'SONY PRST1 and newer Device Interface'
     gui_name       = 'SONY Reader'
-    description    = _('Communicate with the PRST1 and newer SONY eBook readers')
+    description    = _('Communicate with the PRST1 and newer SONY e-book readers')
     author         = 'Kovid Goyal'
     supported_platforms = ['windows', 'osx', 'linux']
     path_sep = '/'
@@ -71,7 +74,7 @@ class PRST1(USBMS):
         'series, tags, authors',
         _('Upload separate cover thumbnails for books') +
         ':::'+_('Normally, the SONY readers get the cover image from the'
-                ' ebook file itself. With this option, calibre will send a '
+                ' e-book file itself. With this option, calibre will send a '
                 'separate cover image to the reader, useful if you are '
                 'sending DRMed books in which you cannot change the cover.'),
         _('Refresh separate covers when using automatic management') +
@@ -672,8 +675,7 @@ class PRST1(USBMS):
                                 'WHERE content_id = ? AND collection_id = ? ')
                         t = (bookId, db_collections[collection],)
                         cursor.execute(query, t)
-                        debug_print('Deleted Book From Collection: ' + bookPath
-                                + ' -> ' + collection)
+                        debug_print('Deleted Book From Collection: ' + bookPath + ' -> ' + collection)
 
                 db_collections[collection] = None
 

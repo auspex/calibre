@@ -13,27 +13,33 @@ from calibre import strftime
 from calibre.constants import __appname__
 from calibre.db.view import sanitize_sort_field_name
 from calibre.ebooks.metadata import authors_to_string
+from calibre.srv.content import get, book_filename
 from calibre.srv.errors import HTTPRedirect, HTTPBadRequest
 from calibre.srv.routes import endpoint
 from calibre.srv.utils import get_library_data, http_date
 from calibre.utils.cleantext import clean_xml_chars
-from calibre.utils.date import timestampfromdt, dt_as_local
+from calibre.utils.date import timestampfromdt, dt_as_local, is_date_undefined
 
 # /mobile {{{
+
+
 def clean(x):
     if isinstance(x, basestring):
         x = clean_xml_chars(x)
     return x
+
 
 def E(tag, *children, **attribs):
     children = list(map(clean, children))
     attribs = {k.rstrip('_').replace('_', '-'):clean(v) for k, v in attribs.iteritems()}
     return getattr(E_, tag)(*children, **attribs)
 
+
 for tag in 'HTML HEAD TITLE LINK DIV IMG BODY OPTION SELECT INPUT FORM SPAN TABLE TR TD A HR META'.split():
     setattr(E, tag, partial(E, tag))
     tag = tag.lower()
     setattr(E, tag, partial(E, tag))
+
 
 def html(ctx, rd, endpoint, output):
     rd.outheaders.set('Content-Type', 'text/html; charset=UTF-8', replace_all=True)
@@ -45,7 +51,8 @@ def html(ctx, rd, endpoint, output):
             ans = ans.encode('utf-8')
     return ans
 
-def build_search_box(num, search, sort, order, ctx, field_metadata):  # {{{
+
+def build_search_box(num, search, sort, order, ctx, field_metadata, library_id):  # {{{
     div = E.div(id='search_box')
     form = E.form(_('Show '), method='get', action=ctx.url_for('/mobile'))
     form.set('accept-charset', 'UTF-8')
@@ -82,10 +89,14 @@ def build_search_box(num, search, sort, order, ctx, field_metadata):  # {{{
         order_select.append(E.option(option, **kwargs))
     form.append(order_select)
 
+    if library_id:
+        form.append(E.input(name='library_id', type='hidden', value=library_id))
+
     form.append(E.input(id='go', type='submit', value=_('Search')))
 
     return div
 # }}}
+
 
 def build_navigation(start, num, total, url_base):  # {{{
     end = min((start+num-1), total)
@@ -121,9 +132,10 @@ def build_choose_library(ctx, library_map):
         ),
         id='choose_library')
 
-def build_index(books, num, search, sort, order, start, total, url_base, field_metadata, ctx, library_map, library_id):  # {{{
+
+def build_index(rd, books, num, search, sort, order, start, total, url_base, field_metadata, ctx, library_map, library_id):  # {{{
     logo = E.div(E.img(src=ctx.url_for('/static', what='calibre.png'), alt=__appname__), id='logo')
-    search_box = build_search_box(num, search, sort, order, ctx, field_metadata)
+    search_box = build_search_box(num, search, sort, order, ctx, field_metadata, library_id)
     navigation = build_navigation(start, num, total, url_base)
     navigation2 = build_navigation(start, num, total, url_base)
     if library_map:
@@ -153,7 +165,7 @@ def build_index(books, num, search, sort, order, start, total, url_base, field_m
             s = E.span(
                 E.a(
                     fmt.lower(),
-                    href=ctx.url_for('/get', what=fmt, book_id=book.id, library_id=library_id)
+                    href=ctx.url_for('/legacy/get', what=fmt, book_id=book.id, library_id=library_id, filename=book_filename(rd, book.id, book, fmt))
                 ),
                 class_='button')
             s.tail = u''
@@ -177,8 +189,8 @@ def build_index(books, num, search, sort, order, start, total, url_base, field_m
         first = E.span(u'\u202f%s %s by %s' % (book.title, series,
             authors_to_string(book.authors)), class_='first-line')
         div.append(first)
-        second = E.span(u'%s %s %s' % (strftime('%d %b, %Y', t=dt_as_local(book.timestamp).timetuple()),
-            tags, ctext), class_='second-line')
+        ds = '' if is_date_undefined(book.timestamp) else strftime('%d %b, %Y', t=dt_as_local(book.timestamp).timetuple())
+        second = E.span(u'%s %s %s' % (ds, tags, ctext), class_='second-line')
         div.append(second)
 
         books_table.append(E.tr(thumbnail, data))
@@ -204,6 +216,7 @@ def build_index(books, num, search, sort, order, start, total, url_base, field_m
         body
     )  # End html
 # }}}
+
 
 @endpoint('/mobile', postprocess=html)
 def mobile(ctx, rd):
@@ -233,13 +246,35 @@ def mobile(ctx, rd):
     q = {b'search':search.encode('utf-8'), b'order':bytes(order), b'sort':sort_by.encode('utf-8'), b'num':bytes(num), 'library_id':library_id}
     url_base = ctx.url_for('/mobile') + '?' + urlencode(q)
     lm = {k:v for k, v in library_map.iteritems() if k != library_id}
-    return build_index(books, num, search, sort_by, order, start, total, url_base, db.field_metadata, ctx, lm, library_id)
+    return build_index(rd, books, num, search, sort_by, order, start, total, url_base, db.field_metadata, ctx, lm, library_id)
 # }}}
+
 
 @endpoint('/browse/{+rest=""}')
 def browse(ctx, rd, rest):
-    raise HTTPRedirect(ctx.url_for(None))
+    if rest.startswith('book/'):
+        # implementation of https://bugs.launchpad.net/calibre/+bug/1698411
+        # redirect old server book URLs to new URLs
+        redirect = ctx.url_for(None) + '#book_id=' + rest[5:] + "&amp;panel=book_details"
+        from lxml import etree as ET
+        return html(ctx, rd, endpoint,
+                 E.html(E.head(
+                     ET.XML('<meta http-equiv="refresh" content="0;url=' + redirect + '"/>'),
+                     ET.XML('<script language="javascript">' +
+                         'window.location.href = "' + redirect + '"' +
+                         '</script>'
+                         ))))
+    else:
+        raise HTTPRedirect(ctx.url_for(None))
+
 
 @endpoint('/stanza/{+rest=""}')
 def stanza(ctx, rd, rest):
     raise HTTPRedirect(ctx.url_for('/opds'))
+
+
+@endpoint('/legacy/get/{what}/{book_id}/{library_id}/{+filename=""}', android_workaround=True)
+def legacy_get(ctx, rd, what, book_id, library_id, filename):
+    # See https://www.mobileread.com/forums/showthread.php?p=3531644 for why
+    # this is needed for Kobo browsers
+    return get(ctx, rd, what, book_id, library_id)

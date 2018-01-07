@@ -15,6 +15,7 @@ from calibre.utils.config import dynamic
 from calibre.gui2.actions import InterfaceAction
 from calibre import sanitize_file_name_unicode
 
+
 class GenerateCatalogAction(InterfaceAction):
 
     name = 'Generate Catalog'
@@ -99,7 +100,7 @@ class GenerateCatalogAction(InterfaceAction):
                 except EnvironmentError as err:
                     if getattr(err, 'errno', None) == errno.EACCES:  # Permission denied
                         import traceback
-                        error_dialog(self, _('Permission denied'),
+                        error_dialog(self.gui, _('Permission denied'),
                                 _('Could not open %s. Is it being used by another'
                                 ' program?')%destination, det_msg=traceback.format_exc(),
                                 show=True)

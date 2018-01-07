@@ -13,6 +13,7 @@ from textwrap import dedent
 
 color_row_key = '*row'
 
+
 class Rule(object):  # {{{
 
     SIGNATURE = '# BasicColorRule():'
@@ -198,8 +199,13 @@ class Rule(object):  # {{{
             return "contains(field('%s'), \"%s\", '1', '')"%(col, val)
         if action == 'does not match pattern':
             return "contains(field('%s'), \"%s\", '', '1')"%(col, val)
+        if action == 'contains':
+            return "contains(field('%s'), \"%s\", '1', '')"%(col, re.escape(val))
+        if action == 'does not contain':
+            return "contains(field('%s'), \"%s\", '', '1')"%(col, re.escape(val))
 
 # }}}
+
 
 def rule_from_template(fm, template):
     ok_lines = []
@@ -223,6 +229,7 @@ def rule_from_template(fm, template):
             ok_lines.append(line)
     return '\n'.join(ok_lines)
 
+
 def conditionable_columns(fm):
     for key in fm:
         m = fm[key]
@@ -234,12 +241,14 @@ def conditionable_columns(fm):
             else:
                 yield key
 
+
 def displayable_columns(fm):
     yield color_row_key
     for key in fm.displayable_field_keys():
         if key not in ('sort', 'author_sort', 'comments', 'formats',
                 'identifiers', 'path'):
             yield key
+
 
 def migrate_old_rule(fm, template):
     if template.startswith('program:\n#tag wizard'):

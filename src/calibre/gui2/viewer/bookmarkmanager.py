@@ -15,6 +15,7 @@ from PyQt5.Qt import (
 from calibre.gui2 import choose_save_file, choose_files
 from calibre.utils.icu import sort_key
 
+
 class BookmarksList(QListWidget):
 
     changed = pyqtSignal()
@@ -174,6 +175,7 @@ class BookmarkManager(QWidget):
 
     def sort_by_pos(self):
         from calibre.ebooks.epub.cfi.parse import cfi_sort_key
+
         def pos_key(b):
             if b.get('type', None) == 'cfi':
                 return b['spine'], cfi_sort_key(b['pos'])
@@ -194,15 +196,15 @@ class BookmarkManager(QWidget):
 
     def export_bookmarks(self):
         filename = choose_save_file(
-            self, 'export-viewer-bookmarks', _('Export Bookmarks'),
-            filters=[(_('Saved Bookmarks'), ['pickle'])], all_files=False, initial_filename='bookmarks.pickle')
+            self, 'export-viewer-bookmarks', _('Export bookmarks'),
+            filters=[(_('Saved bookmarks'), ['pickle'])], all_files=False, initial_filename='bookmarks.pickle')
         if filename:
             with open(filename, 'wb') as fileobj:
                 cPickle.dump(self.get_bookmarks(), fileobj, -1)
 
     def import_bookmarks(self):
-        files = choose_files(self, 'export-viewer-bookmarks', _('Import Bookmarks'),
-            filters=[(_('Saved Bookmarks'), ['pickle'])], all_files=False, select_only_single_file=True)
+        files = choose_files(self, 'export-viewer-bookmarks', _('Import bookmarks'),
+            filters=[(_('Saved bookmarks'), ['pickle'])], all_files=False, select_only_single_file=True)
         if not files:
             return
         filename = files[0]
@@ -228,4 +230,3 @@ class BookmarkManager(QWidget):
                         bookmarks.append(bm)
                 self.set_bookmarks([bm for bm in bookmarks if bm['title'] != 'calibre_current_page_bookmark'])
                 self.edited.emit(self.get_bookmarks())
-

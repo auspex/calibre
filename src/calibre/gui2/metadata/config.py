@@ -13,8 +13,10 @@ from PyQt5.Qt import (QWidget, QGridLayout, QGroupBox, QListView, Qt, QSpinBox,
         QDoubleSpinBox, QCheckBox, QLineEdit, QComboBox, QLabel)
 
 from calibre.gui2.preferences.metadata_sources import FieldsModel as FM
+from calibre.utils.icu import sort_key
 
-class FieldsModel(FM): # {{{
+
+class FieldsModel(FM):  # {{{
 
     def __init__(self, plugin):
         FM.__init__(self)
@@ -51,6 +53,7 @@ class FieldsModel(FM): # {{{
 
 # }}}
 
+
 class ConfigWidget(QWidget):
 
     def __init__(self, plugin):
@@ -60,7 +63,7 @@ class ConfigWidget(QWidget):
         self.l = l = QGridLayout()
         self.setLayout(l)
 
-        self.gb = QGroupBox(_('Downloaded metadata fields'), self)
+        self.gb = QGroupBox(_('Metadata fields to download'), self)
         if plugin.config_help_message:
             self.pchm = QLabel(plugin.config_help_message)
             self.pchm.setWordWrap(True)
@@ -97,7 +100,9 @@ class ConfigWidget(QWidget):
             widget.setChecked(bool(val))
         elif opt.type == 'choices':
             widget = QComboBox(self)
-            for key, label in opt.choices.iteritems():
+            items = list(opt.choices.iteritems())
+            items.sort(key=lambda (k, v): sort_key(v))
+            for key, label in items:
                 widget.addItem(label, (key))
             idx = widget.findData((val))
             widget.setCurrentIndex(idx)
@@ -115,7 +120,6 @@ class ConfigWidget(QWidget):
             self.l.addWidget(l, r, 0, 1, 1)
             self.l.addWidget(widget, r, 1, 1, 1)
 
-
     def commit(self):
         self.fields_model.commit()
         for w in self.widgets:
@@ -129,5 +133,3 @@ class ConfigWidget(QWidget):
                 idx = w.currentIndex()
                 val = unicode(w.itemData(idx) or '')
             self.plugin.prefs[w.opt.name] = val
-
-

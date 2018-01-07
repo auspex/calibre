@@ -21,6 +21,7 @@ from calibre.gui2.wizard.send_email_ui import Ui_Form
 from calibre.utils.smtp import config as smtp_prefs
 from calibre.gui2 import error_dialog, question_dialog
 
+
 class TestEmail(QDialog):
 
     test_done = pyqtSignal(object)
@@ -55,7 +56,11 @@ class TestEmail(QDialog):
         l.addWidget(bb)
 
     def start_test(self, *args):
-        self.log.setPlainText(_('Sending mail, please wait...'))
+        if not self.to.text().strip():
+            return error_dialog(self, _('No email address'), _(
+                'No email address to send mail to has been specified. You'
+                ' must specify a To: address before running the test.'), show=True)
+        self.log.setPlainText(_('Sending email, please wait...'))
         self.test_button.setEnabled(False)
         t = Thread(target=self.run_test, name='TestEmailSending')
         t.daemon = True
@@ -63,7 +68,7 @@ class TestEmail(QDialog):
 
     def run_test(self):
         try:
-            tb = self.test_func(unicode(self.to.text())) or _('Mail successfully sent')
+            tb = self.test_func(unicode(self.to.text())) or _('Email successfully sent')
         except Exception:
             import traceback
             tb = traceback.format_exc()
@@ -73,6 +78,7 @@ class TestEmail(QDialog):
         if self.isVisible():
             self.test_button.setEnabled(True)
             self.log.setPlainText(txt)
+
 
 class RelaySetup(QDialog):
 
@@ -87,7 +93,7 @@ class RelaySetup(QDialog):
         self.tl = QLabel(('<p>'+_('Setup sending email using') +
                 ' <b>{name}</b><p>' +
             _('If you don\'t have an account, you can sign up for a free {name} email '
-            'account at <a href="http://{url}">http://{url}</a>. {extra}')).format(
+            'account at <a href="https://{url}">https://{url}</a>. {extra}')).format(
                 **service))
         l.addWidget(self.tl, 0, 0, 3, 0)
         self.tl.setWordWrap(True)
@@ -274,11 +280,6 @@ class SendEmail(QWidget, Ui_Form):
                             _('You must either set both the username <b>and</b> password for '
                             'the mail server or no username and no password at all.')).exec_()
                 return False
-            if not username and not password and enc_method != 'NONE':
-                error_dialog(self, _('Bad configuration'),
-                            _('Please enter a username and password or set'
-                               ' encryption to None ')).exec_()
-                return False
             if not (username and password) and not question_dialog(self,
                     _('Are you sure?'),
                 _('No username and password set for mailserver. Most '
@@ -292,6 +293,3 @@ class SendEmail(QWidget, Ui_Form):
         conf.set('relay_password', hexlify(password.encode('utf-8')))
         conf.set('encryption', enc_method)
         return True
-
-
-

@@ -9,9 +9,10 @@ from calibre.gui2.convert import Widget
 
 format_model = None
 
+
 class PluginWidget(Widget, Ui_Form):
 
-    TITLE = _('PDB Output')
+    TITLE = _('PDB output')
     HELP = _('Options specific to')+' PDB '+_('output')
     COMMIT_NAME = 'pdb_output'
     ICON = I('mimetypes/unknown.png')
@@ -22,5 +23,5 @@ class PluginWidget(Widget, Ui_Form):
 
         for x in get_option('format').option.choices:
             self.opt_format.addItem(x)
-        
+
         self.initialize_options(get_option, get_help, db, book_id)

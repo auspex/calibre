@@ -6,7 +6,7 @@ from __future__ import (unicode_literals, division, absolute_import,
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import errno, socket, select, os
+import errno, socket, select, os, time
 from Cookie import SimpleCookie
 from contextlib import closing
 from urlparse import parse_qs
@@ -30,8 +30,10 @@ HTTP1  = 'HTTP/1.0'
 HTTP11 = 'HTTP/1.1'
 DESIRED_SEND_BUFFER_SIZE = 16 * 1024  # windows 7 uses an 8KB sndbuf
 
+
 def http_date(timeval=None):
     return type('')(formatdate(timeval=timeval, usegmt=True))
+
 
 class MultiDict(dict):  # {{{
 
@@ -105,11 +107,13 @@ class MultiDict(dict):  # {{{
             '%s: %s' % (k, (repr(v) if isinstance(v, bytes) else v)) for k, v in sorted(self.items(), key=itemgetter(0)))
 # }}}
 
+
 def error_codes(*errnames):
     ''' Return error numbers for error names, ignoring non-existent names '''
     ans = {getattr(errno, x, None) for x in errnames}
     ans.discard(None)
     return ans
+
 
 socket_errors_eintr = error_codes("EINTR", "WSAEINTR")
 
@@ -129,13 +133,16 @@ socket_errors_socket_closed = error_codes(  # errors indicating a disconnected c
 socket_errors_nonblocking = error_codes(
     'EAGAIN', 'EWOULDBLOCK', 'WSAEWOULDBLOCK')
 
+
 def start_cork(sock):
     if hasattr(socket, 'TCP_CORK'):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
 
+
 def stop_cork(sock):
     if hasattr(socket, 'TCP_CORK'):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
+
 
 def create_sock_pair(port=0):
     '''Create socket pair. Works also on windows by using an ephemeral TCP port.'''
@@ -173,6 +180,7 @@ def create_sock_pair(port=0):
         client_sock.setblocking(True)
 
     return client_sock, srv_sock
+
 
 def parse_http_list(header_val):
     """Parse lists as described by RFC 2068 Section 2.
@@ -219,6 +227,7 @@ def parse_http_list(header_val):
     if part:
         yield part.strip()
 
+
 def parse_http_dict(header_val):
     'Parse an HTTP comma separated header with items of the form a=1, b="xxx" into a dictionary'
     if not header_val:
@@ -233,10 +242,12 @@ def parse_http_dict(header_val):
             ans[k] = v
     return ans
 
+
 def sort_q_values(header_val):
     'Get sorted items from an HTTP header of type: a;q=0.5, b;q=0.7...'
     if not header_val:
         return []
+
     def item(x):
         e, r = x.partition(';')[::2]
         p, v = r.partition('=')[::2]
@@ -249,6 +260,7 @@ def sort_q_values(header_val):
         return e.strip(), q
     return tuple(map(itemgetter(0), sorted(map(item, parse_http_list(header_val)), key=itemgetter(1), reverse=True)))
 
+
 def eintr_retry_call(func, *args, **kwargs):
     while True:
         try:
@@ -258,6 +270,7 @@ def eintr_retry_call(func, *args, **kwargs):
                 continue
             raise
 
+
 def get_translator_for_lang(cache, bcp_47_code):
     try:
         return cache[bcp_47_code]
@@ -266,9 +279,11 @@ def get_translator_for_lang(cache, bcp_47_code):
     cache[bcp_47_code] = ans = get_translator(bcp_47_code)
     return ans
 
+
 def encode_path(*components):
     'Encode the path specified as a list of path components using URL encoding'
     return '/' + '/'.join(urlquote(x.encode('utf-8'), '').decode('ascii') for x in components)
+
 
 def encode_name(name):
     'Encode a name (arbitrary string) as URL safe characters. See decode_name() also.'
@@ -276,8 +291,10 @@ def encode_name(name):
         name = name.encode('utf-8')
     return hexlify(name)
 
+
 def decode_name(name):
     return unhexlify(name).decode('utf-8')
+
 
 class Cookie(SimpleCookie):
 
@@ -285,6 +302,7 @@ class Cookie(SimpleCookie):
         if not isinstance(key, bytes):
             key = key.encode('ascii')  # Python 2.x cannot handle unicode keys
         return SimpleCookie._BaseCookie__set(self, key, real_value, coded_value)
+
 
 def custom_fields_to_display(db):
     ckeys = set(db.field_metadata.ignorable_field_keys())
@@ -298,8 +316,10 @@ def custom_fields_to_display(db):
 
 # Logging {{{
 
+
 class ServerLog(ThreadSafeLog):
     exception_traceback_level = ThreadSafeLog.WARN
+
 
 class RotatingStream(object):
 
@@ -356,6 +376,25 @@ class RotatingStream(object):
         self.rename(self.filename, '%s.%d' % (self.filename, 1))
         self.set_output()
 
+    def clear(self):
+        if self.filename in ('/dev/stdout', '/dev/stderr'):
+            return
+        self.stream.close()
+        failed = {}
+        try:
+            os.remove(self.filename)
+        except EnvironmentError as e:
+            failed[self.filename] = e
+        import glob
+        for f in glob.glob(self.filename + '.*'):
+            try:
+                os.remove(f)
+            except EnvironmentError as e:
+                failed[f] = e
+        self.set_output()
+        return failed
+
+
 class RotatingLog(ServerLog):
 
     def __init__(self, filename, max_size=None, history=5):
@@ -366,6 +405,7 @@ class RotatingLog(ServerLog):
         for o in self.outputs:
             o.flush()
 # }}}
+
 
 class HandleInterrupt(object):  # {{{
 
@@ -415,6 +455,7 @@ class HandleInterrupt(object):  # {{{
                 raise WindowsError()
 # }}}
 
+
 class Accumulator(object):  # {{{
 
     'Optimized replacement for BytesIO when the usage pattern is many writes followed by a single getvalue()'
@@ -434,41 +475,6 @@ class Accumulator(object):  # {{{
         return ans
 # }}}
 
-class ReadOnlyFileBuffer(object):
-
-    ''' A zero copy implementation of a file like object. Uses memoryviews for efficiency. '''
-
-    def __init__(self, raw):
-        self.sz, self.mv = len(raw), (raw if isinstance(raw, memoryview) else memoryview(raw))
-        self.pos = 0
-
-    def tell(self):
-        return self.pos
-
-    def read(self, n=None):
-        if n is None:
-            ans = self.mv[self.pos:]
-            self.pos = self.sz
-            return ans
-        ans = self.mv[self.pos:self.pos+n]
-        self.pos = min(self.pos + n, self.sz)
-        return ans
-
-    def seek(self, pos, whence=os.SEEK_SET):
-        if whence == os.SEEK_SET:
-            self.pos = pos
-        elif whence == os.SEEK_END:
-            self.pos = self.sz + pos
-        else:
-            self.pos += pos
-        self.pos = max(0, min(self.pos, self.sz))
-        return self.pos
-
-    def getvalue(self):
-        return self.mv
-
-    def close(self):
-        pass
 
 def get_db(ctx, rd, library_id):
     db = ctx.get_library(rd, library_id)
@@ -476,13 +482,17 @@ def get_db(ctx, rd, library_id):
         raise HTTPNotFound('Library %r not found' % library_id)
     return db
 
-def get_library_data(ctx, rd):
+
+def get_library_data(ctx, rd, strict_library_id=False):
     library_id = rd.query.get('library_id')
     library_map, default_library = ctx.library_info(rd)
     if library_id not in library_map:
+        if strict_library_id and library_id:
+            raise HTTPNotFound('No library with id: {}'.format(library_id))
         library_id = default_library
     db = get_db(ctx, rd, library_id)
     return db, library_id, library_map, default_library
+
 
 class Offsets(object):
     'Calculate offsets for a paginated view'
@@ -506,7 +516,9 @@ class Offsets(object):
         if self.last_offset < 0:
             self.last_offset = 0
 
+
 _use_roman = None
+
 
 def get_use_roman():
     global _use_roman
@@ -514,3 +526,12 @@ def get_use_roman():
         from calibre.gui2 import config
         _use_roman = config['use_roman_numerals_for_series_number']
     return _use_roman
+
+
+if iswindows:
+    def fast_now_strftime(fmt):
+        fmt = fmt.encode('mbcs')
+        return time.strftime(fmt).decode('mbcs', 'replace')
+else:
+    def fast_now_strftime(fmt):
+        return time.strftime(fmt).decode('utf-8', 'replace')

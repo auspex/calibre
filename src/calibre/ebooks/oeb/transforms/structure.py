@@ -15,6 +15,7 @@ from collections import OrderedDict, Counter
 from calibre.ebooks.oeb.base import XPNSMAP, TOC, XHTML, xml2text, barename
 from calibre.ebooks import ConversionError
 
+
 def XPath(x):
     try:
         return etree.XPath(x, namespaces=XPNSMAP)
@@ -22,8 +23,10 @@ def XPath(x):
         raise ConversionError(
         'The syntax of the XPath expression %s is invalid.' % repr(x))
 
+
 def isspace(x):
     return not x or x.replace(u'\xa0', u'').isspace()
+
 
 def at_start(elem):
     ' Return True if there is no content before elem '
@@ -41,6 +44,7 @@ def at_start(elem):
             continue
         return False
     return False
+
 
 class DetectStructure(object):
 
@@ -172,7 +176,7 @@ class DetectStructure(object):
                 if chapter_mark == 'none':
                     continue
                 if chapter_mark == 'rule':
-                    mark = etree.Element(XHTML('hr'))
+                    mark = elem.makeelement(XHTML('hr'))
                 elif chapter_mark == 'pagebreak':
                     if c[item] < 3 and at_start(elem):
                         # For the first two elements in this item, check if they
@@ -182,9 +186,9 @@ class DetectStructure(object):
                         # feedbooks epubs match both a heading tag and its
                         # containing div with the default chapter expression.
                         continue
-                    mark = etree.Element(XHTML('div'), style=page_break_after)
+                    mark = elem.makeelement(XHTML('div'), style=page_break_after)
                 else:  # chapter_mark == 'both':
-                    mark = etree.Element(XHTML('hr'), style=page_break_before)
+                    mark = elem.makeelement(XHTML('hr'), style=page_break_before)
                 try:
                     elem.addprevious(mark)
                 except TypeError:
@@ -317,5 +321,3 @@ class DetectStructure(object):
                                     level2.add(text, _href,
                                         play_order=self.oeb.toc.next_play_order())
                                 break
-
-

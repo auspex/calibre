@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 import os
 
-from PyQt5.Qt import Qt
+from PyQt5.Qt import Qt, QVBoxLayout, QFormLayout
 
 from calibre.gui2.preferences import ConfigWidgetBase, test_widget, \
     CommaSeparatedList, AbortCommit
@@ -16,6 +16,7 @@ from calibre.utils.config import prefs
 from calibre.gui2.widgets import FilenamePattern
 from calibre.gui2.auto_add import AUTO_ADDED
 from calibre.gui2 import gprefs, choose_dir, error_dialog, question_dialog
+
 
 class ConfigWidget(ConfigWidgetBase, Ui_Form):
 
@@ -44,6 +45,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         r('auto_convert_same_fmt', gprefs)
 
         self.filename_pattern = FilenamePattern(self)
+        self.metadata_box.l = QVBoxLayout(self.metadata_box)
         self.metadata_box.layout().insertWidget(0, self.filename_pattern)
         self.filename_pattern.changed_signal.connect(self.changed_signal.emit)
         self.auto_add_browse_button.clicked.connect(self.choose_aa_path)
@@ -53,6 +55,8 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         self.tag_map_rules = self.add_filter_rules = None
         self.tag_map_rules_button.clicked.connect(self.change_tag_map_rules)
         self.add_filter_rules_button.clicked.connect(self.change_add_filter_rules)
+        self.tabWidget.setCurrentIndex(0)
+        self.actions_tab.layout().setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
     def change_tag_map_rules(self):
         from calibre.gui2.tag_mapper import RulesDialog
@@ -145,6 +149,11 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
                             _('You do not have read/write permissions for '
                                 'the folder: %s')%path, show=True)
                     raise AbortCommit('invalid auto-add folder')
+                if os.path.basename(path)[0] in '._':
+                    error_dialog(self, _('Invalid folder'),
+                            _('Cannot use folders whose names start with a '
+                                'period or underscore: %s')%os.path.basename(path), show=True)
+                    raise AbortCommit('invalid auto-add folder')
                 if not question_dialog(self, _('Are you sure?'),
                         _('<b>WARNING:</b> Any files you place in %s will be '
                             'automatically deleted after being added to '
@@ -176,8 +185,8 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         # Update rules used int he auto adder
         gui.auto_adder.read_rules()
 
-if __name__ == '__main__':
-    from PyQt5.Qt import QApplication
-    app = QApplication([])
-    test_widget('Import/Export', 'Adding')
 
+if __name__ == '__main__':
+    from calibre.gui2 import Application
+    app = Application([])
+    test_widget('Import/Export', 'Adding')
