@@ -16,7 +16,7 @@ from PyQt5.Qt import (
 
 from calibre import prints, isbytestring
 from calibre.constants import cache_dir, iswindows
-from calibre.ptempfile import PersistentTemporaryDirectory, TemporaryDirectory
+from calibre.ptempfile import TemporaryDirectory
 from calibre.ebooks.oeb.base import urlnormalize
 from calibre.ebooks.oeb.polish.main import SUPPORTED, tweak_polish
 from calibre.ebooks.oeb.polish.container import get_container as _gc, clone_container, guess_type, OEB_DOCS, OEB_STYLES
@@ -49,6 +49,7 @@ from calibre.gui2.tweak_book.widgets import (
 from calibre.utils.config import JSONConfig
 from calibre.utils.icu import numeric_sort_key
 from calibre.utils.imghdr import identify
+from calibre.utils.tdir_in_cache import tdir_in_cache
 
 _diff_dialogs = []
 last_used_transform_rules = []
@@ -298,7 +299,7 @@ class Boss(QObject):
             shutil.rmtree(self.tdir, ignore_errors=True)
         # We use the cache dir rather than the temporary dir to try and prevent
         # temp file cleaners from nuking ebooks. See https://bugs.launchpad.net/bugs/1740460
-        self.tdir = PersistentTemporaryDirectory(prefix='calibre-ew-', dir=cache_dir())
+        self.tdir = tdir_in_cache('ee')
         self._edit_file_on_open = edit_file
         self._clear_notify_data = clear_notify_data
         self.gui.blocking_job('open_book', _('Opening book, please wait...'), self.book_opened, get_container, path, tdir=self.mkdtemp())
@@ -765,7 +766,8 @@ class Boss(QObject):
         :param to_container: A container object to compare the current container to. If None, the previously checkpointed container is used
         '''
         self.commit_all_editors_to_container()
-        d = self.create_diff_dialog()
+        k = {} if allow_revert else {'revert_msg': None}
+        d = self.create_diff_dialog(**k)
         d.revert_requested.connect(partial(self.revert_requested, self.global_undo.previous_container))
         other = to_container or self.global_undo.previous_container
         d.container_diff(other, self.global_undo.current_container,
@@ -1449,6 +1451,9 @@ class Boss(QObject):
                 _('Editing files of type %s is not supported' % mime), show=True)
         return self.edit_file(name, syntax)
 
+    def edit_next_file(self, backwards=False):
+        self.gui.file_list.edit_next_file(self.currently_editing, backwards)
+
     def quick_open(self):
         if not self.ensure_book(_('No book is currently open. You must first open a book to edit.')):
             return
@@ -1514,7 +1519,8 @@ class Boss(QObject):
             actions['go-to-line-number'].setEnabled(ed.has_line_numbers)
             actions['fix-html-current'].setEnabled(ed.syntax == 'html')
             name = editor_name(ed)
-            if name is not None and getattr(ed, 'syntax', None) == 'html':
+            mime = current_container().mime_map.get(name)
+            if name is not None and (getattr(ed, 'syntax', None) == 'html' or mime == 'image/svg+xml'):
                 if self.gui.preview.show(name):
                     # The file being displayed by the preview has changed.
                     # Set the preview's position to the current cursor

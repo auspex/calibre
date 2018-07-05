@@ -15,7 +15,7 @@ from PyQt5.Qt import (
     QLabel, QGridLayout, QApplication, QDoubleSpinBox, QListWidgetItem, QSize,
     QPixmap, QDialog, QMenu, QLineEdit, QSizePolicy, QKeySequence,
     QDialogButtonBox, QAction, QCalendarWidget, QDate, QDateTime, QUndoCommand,
-    QUndoStack, QVBoxLayout, QPlainTextEdit)
+    QUndoStack, QVBoxLayout, QPlainTextEdit, QUrl)
 
 from calibre.gui2.widgets import EnLineEdit, FormatList as _FormatList, ImageView
 from calibre.gui2.widgets2 import access_key, populate_standard_spinbox_context_menu, RightClickButton, Dialog, RatingEditor
@@ -164,6 +164,8 @@ def make_undoable(spinbox):
             if hasattr(self, 'setDateTime'):
                 m.addAction(_('Set date to undefined') + '\t' + QKeySequence(Qt.Key_Minus).toString(QKeySequence.NativeText),
                             lambda : self.setDateTime(self.minimumDateTime()))
+                m.addAction(_('Set date to today') + '\t' + QKeySequence(Qt.Key_Equal).toString(QKeySequence.NativeText),
+                            lambda : self.setDateTime(QDateTime.currentDateTime()))
             m.addAction(_('&Undo') + access_key(QKeySequence.Undo), self.undo).setEnabled(self.undo_stack.canUndo())
             m.addAction(_('&Redo') + access_key(QKeySequence.Redo), self.redo).setEnabled(self.undo_stack.canRedo())
             m.addSeparator()
@@ -255,13 +257,13 @@ class TitleSortEdit(TitleEdit, ToMetadataMixin):
         self.languages_edit = languages_edit
 
         base = self.TOOLTIP
-        ok_tooltip = '<p>' + textwrap.fill(base+'<br><br>'+
-                            _(' The green color indicates that the current '
-                              'title sort matches the current title'))
-        bad_tooltip = '<p>'+textwrap.fill(base + '<br><br>'+
-                _(' The red color warns that the current '
-                  'title sort does not match the current title. '
-                  'No action is required if this is what you want.'))
+        ok_tooltip = '<p>' + textwrap.fill(base+'<br><br>' + _(
+            ' The green color indicates that the current '
+            'title sort matches the current title'))
+        bad_tooltip = '<p>'+textwrap.fill(base + '<br><br>' + _(
+            ' The red color warns that the current '
+            'title sort does not match the current title. '
+            'No action is required if this is what you want.'))
         self.tooltips = (ok_tooltip, bad_tooltip)
 
         self.title_edit.textChanged.connect(self.update_state_and_val, type=Qt.QueuedConnection)
@@ -450,13 +452,13 @@ class AuthorSortEdit(EnLineEdit, ToMetadataMixin):
         self.db = db
 
         base = self.TOOLTIP
-        ok_tooltip = '<p>' + textwrap.fill(base+'<br><br>'+
-                _(' The green color indicates that the current '
-                    'author sort matches the current author'))
-        bad_tooltip = '<p>'+textwrap.fill(base + '<br><br>'+
-                _(' The red color indicates that the current '
-                    'author sort does not match the current author. '
-                    'No action is required if this is what you want.'))
+        ok_tooltip = '<p>' + textwrap.fill(base+'<br><br>' + _(
+            ' The green color indicates that the current '
+            'author sort matches the current author'))
+        bad_tooltip = '<p>'+textwrap.fill(base + '<br><br>'+ _(
+            ' The red color indicates that the current '
+            'author sort does not match the current author. '
+            'No action is required if this is what you want.'))
         self.tooltips = (ok_tooltip, bad_tooltip)
 
         self.authors_edit.editTextChanged.connect(self.update_state_and_val, type=Qt.QueuedConnection)
@@ -898,10 +900,9 @@ class FormatsManager(QWidget):
         return
 
     def add_format(self, *args):
-        files = choose_files(self, 'add formats dialog',
-                             _("Choose formats for ") +
-                             self.dialog.title.current_val,
-                             [(_('Books'), BOOK_EXTENSIONS)])
+        files = choose_files(
+                self, 'add formats dialog', _("Choose formats for ") + self.dialog.title.current_val,
+                [(_('Books'), BOOK_EXTENSIONS)])
         self._add_formats(files)
 
     def restore_fmt(self, fmt):
@@ -1109,9 +1110,9 @@ class Cover(ImageView):  # {{{
                 cf = open(_file, "rb")
                 cover = cf.read()
             except IOError as e:
-                d = error_dialog(self, _('Error reading file'),
-                        _("<p>There was an error reading from file: <br /><b>") +
-                                 _file + "</b></p><br />"+str(e))
+                d = error_dialog(
+                        self, _('Error reading file'),
+                        _("<p>There was an error reading from file: <br /><b>") + _file + "</b></p><br />"+str(e))
                 d.exec_()
             if cover:
                 orig = self.current_val
@@ -1133,8 +1134,8 @@ class Cover(ImageView):  # {{{
         img = image_from_data(cdata)
         nimg = remove_borders_from_image(img)
         if nimg is not img:
-            self.cdata_before_trim = cdata
             self.current_val = image_to_data(nimg, fmt='png')
+            self.cdata_before_trim = cdata
 
     def manual_trim_cover(self):
         cdata = self.current_val
@@ -1247,6 +1248,9 @@ class CommentsEdit(Editor, ToMetadataMixin):  # {{{
         return property(fget=fget, fset=fset)
 
     def initialize(self, db, id_):
+        path = db.abspath(id_, index_is_id=True)
+        if path:
+            self.set_base_url(QUrl.fromLocalFile(os.path.join(path, 'metadata.html')))
         self.current_val = db.comments(id_, index_is_id=True)
         self.original_val = self.current_val
 
@@ -1451,7 +1455,7 @@ class Identifiers(Dialog):
 class IdentifiersEdit(QLineEdit, ToMetadataMixin):
     LABEL = _('&Ids:')
     BASE_TT = _('Edit the identifiers for this book. '
-            'For example: \n\n%s')%(
+            'For example: \n\n%s\n\nIf an identifier value contains a comma, you can use the | character to represent it.')%(
             'isbn:1565927249, doi:10.1000/182, amazon:1565927249')
     FIELD_NAME = 'identifiers'
 

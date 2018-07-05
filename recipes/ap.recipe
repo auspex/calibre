@@ -28,9 +28,11 @@ class AssociatedPress(BasicNewsRecipe):
     ignore_duplicate_articles = {'title', 'url'}
     remove_empty_feeds = False
     keep_only_tags = [
-        classes('ap_headTitle'),
-        dict(id="byLine"),
-        dict(id=lambda x: x and x.startswith('storyBodyDiv')),
+        classes('topTitle articleImage articleBody'),
+    ]
+    remove_tags = [
+        classes('ad-placeholder modalImageButton modalVideoButton'),
+        dict(name='button'),
     ]
 
     def parse_index(self):

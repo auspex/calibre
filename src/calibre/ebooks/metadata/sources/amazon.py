@@ -486,12 +486,16 @@ class Worker(Thread):  # Get details {{{
         return ans
 
     def parse_authors(self, root):
-        matches = tuple(self.selector('#byline .author .contributorNameID'))
-        if not matches:
-            matches = tuple(self.selector('#byline .author a.a-link-normal'))
-        if matches:
-            authors = [self.totext(x) for x in matches]
-            return [a for a in authors if a]
+        for sel in (
+                '#byline .author .contributorNameID',
+                '#byline .author a.a-link-normal',
+                '#bylineInfo .author .contributorNameID',
+                '#bylineInfo .author a.a-link-normal'
+        ):
+            matches = tuple(self.selector(sel))
+            if matches:
+                authors = [self.totext(x) for x in matches]
+                return [a for a in authors if a]
 
         x = '//h1[contains(@class, "parseasinTitle")]/following-sibling::span/*[(name()="a" and @href) or (name()="span" and @class="contributorNameTrigger")]'
         aname = root.xpath(x)
@@ -835,7 +839,7 @@ class Worker(Thread):  # Get details {{{
 class Amazon(Source):
 
     name = 'Amazon.com'
-    version = (1, 2, 0)
+    version = (1, 2, 2)
     minimum_calibre_version = (2, 82, 0)
     description = _('Downloads metadata and covers from Amazon')
 
@@ -1260,7 +1264,7 @@ class Amazon(Source):
         return matches, query, domain, None
     # }}}
 
-    def search_search_engine(self, br, testing, log, abort, title, authors, identifiers, timeout):  # {{{
+    def search_search_engine(self, br, testing, log, abort, title, authors, identifiers, timeout, override_server=None):  # {{{
         from calibre.ebooks.metadata.sources.update import search_engines_module
         terms, domain = self.create_query(log, title=title, authors=authors,
                                           identifiers=identifiers, for_amazon=False)
@@ -1268,7 +1272,7 @@ class Amazon(Source):
             domain)[len('https://'):].partition('/')[0]
         matches = []
         se = search_engines_module()
-        server = self.server
+        server = override_server or self.server
         if server in ('bing',):
             urlproc, sfunc = se.bing_url_processor, se.bing_search
         elif server in ('auto', 'google'):
@@ -1298,6 +1302,10 @@ class Amazon(Source):
                 log('Skipping non-book result:', result)
         if not matches:
             log('No search engine results for terms:', ' '.join(terms))
+            if urlproc is se.google_url_processor:
+                # Google does not cache adult titles
+                log('Trying the bing search engine instead')
+                return self.search_search_engine(br, testing, log, abort, title, authors, identifiers, timeout, 'bing')
         return matches, terms, domain, urlproc
     # }}}
 

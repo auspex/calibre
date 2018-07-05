@@ -197,7 +197,7 @@ class EPUBMetadataReader(MetadataReaderPlugin):
 class FB2MetadataReader(MetadataReaderPlugin):
 
     name        = 'Read FB2 metadata'
-    file_types  = set(['fb2'])
+    file_types  = {'fb2', 'fbz'}
     description = _('Read metadata from %s files')%'FB2'
 
     def get_metadata(self, stream, ftype):
@@ -476,7 +476,7 @@ class EPUBMetadataWriter(MetadataWriterPlugin):
 class FB2MetadataWriter(MetadataWriterPlugin):
 
     name = 'Set FB2 metadata'
-    file_types = set(['fb2'])
+    file_types = {'fb2', 'fbz'}
     description = _('Set metadata in %s files')%'FB2'
 
     def set_metadata(self, stream, mi, type):
@@ -702,7 +702,8 @@ from calibre.devices.cybook.driver import CYBOOK, ORIZON, MUSE
 from calibre.devices.eb600.driver import (EB600, COOL_ER, SHINEBOOK, TOLINO,
                 POCKETBOOK360, GER2, ITALICA, ECLICTO, DBOOK, INVESBOOK,
                 BOOQ, ELONEX, POCKETBOOK301, MENTOR, POCKETBOOK602,
-                POCKETBOOK701, POCKETBOOK360P, PI2, POCKETBOOK622, POCKETBOOKHD)
+                POCKETBOOK701, POCKETBOOK740, POCKETBOOK360P, PI2, POCKETBOOK622,
+                POCKETBOOKHD)
 from calibre.devices.iliad.driver import ILIAD
 from calibre.devices.irexdr.driver import IREXDR1000, IREXDR800
 from calibre.devices.jetbook.driver import (JETBOOK, MIBUK, JETBOOK_MINI,
@@ -747,7 +748,7 @@ plugins += [
     JETBOOK, JETBOOK_MINI, MIBUK, JETBOOK_COLOR,
     SHINEBOOK,
     POCKETBOOK360, POCKETBOOK301, POCKETBOOK602, POCKETBOOK701, POCKETBOOK360P,
-    POCKETBOOK622, PI2, POCKETBOOKHD,
+    POCKETBOOK622, PI2, POCKETBOOKHD, POCKETBOOK740,
     KINDLE, KINDLE2, KINDLE_DX, KINDLE_FIRE,
     NOOK, NOOK_COLOR,
     PRS505, PRST1,
@@ -815,14 +816,13 @@ from calibre.ebooks.metadata.sources.google import GoogleBooks
 from calibre.ebooks.metadata.sources.amazon import Amazon
 from calibre.ebooks.metadata.sources.edelweiss import Edelweiss
 from calibre.ebooks.metadata.sources.openlibrary import OpenLibrary
-from calibre.ebooks.metadata.sources.isbndb import ISBNDB
 from calibre.ebooks.metadata.sources.overdrive import OverDrive
 from calibre.ebooks.metadata.sources.douban import Douban
 from calibre.ebooks.metadata.sources.ozon import Ozon
 from calibre.ebooks.metadata.sources.google_images import GoogleImages
 from calibre.ebooks.metadata.sources.big_book_search import BigBookSearch
 
-plugins += [GoogleBooks, GoogleImages, Amazon, Edelweiss, OpenLibrary, ISBNDB, OverDrive, Douban, Ozon, BigBookSearch]
+plugins += [GoogleBooks, GoogleImages, Amazon, Edelweiss, OpenLibrary, OverDrive, Douban, Ozon, BigBookSearch]
 
 # }}}
 
@@ -1037,6 +1037,12 @@ class ActionMarkBooks(InterfaceActionBase):
     description = _('Temporarily mark books')
 
 
+class ActionVirtualLibrary(InterfaceActionBase):
+    name = 'Virtual Library'
+    actual_plugin = 'calibre.gui2.actions.virtual_library:VirtualLibraryAction'
+    description = _('Change the current Virtual library')
+
+
 class ActionStore(InterfaceActionBase):
     name = 'Store'
     author = 'John Schember'
@@ -1070,7 +1076,8 @@ plugins += [ActionAdd, ActionFetchAnnotations, ActionGenerateCatalog,
         ActionAddToLibrary, ActionEditCollections, ActionMatchBooks, ActionChooseLibrary,
         ActionCopyToLibrary, ActionTweakEpub, ActionUnpackBook, ActionNextMatch, ActionStore,
         ActionPluginUpdater, ActionPickRandom, ActionEditToC, ActionSortBy,
-        ActionMarkBooks, ActionEmbed, ActionTemplateTester, ActionTagMapper]
+        ActionMarkBooks, ActionEmbed, ActionTemplateTester, ActionTagMapper,
+        ActionVirtualLibrary]
 
 # }}}
 

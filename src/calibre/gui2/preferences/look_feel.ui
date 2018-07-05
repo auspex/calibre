@@ -90,6 +90,13 @@
             </property>
            </widget>
           </item>
+          <item row="2" column="0" colspan="2">
+           <widget class="QCheckBox" name="opt_wrap_toolbar_text">
+            <property name="text">
+             <string>Use t&amp;wo lines for the text under the icons (needs restart)</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -234,7 +241,7 @@
        <item row="6" column="1">
         <widget class="QCheckBox" name="opt_show_splash_screen">
          <property name="text">
-          <string>Show &amp;splash screen at startup</string>
+          <string>Show the &amp;splash screen at startup</string>
          </property>
         </widget>
        </item>
@@ -304,7 +311,7 @@
            <item row="0" column="0" colspan="2">
             <widget class="QLabel" name="label_19">
              <property name="text">
-              <string>Control the Cover grid view. You can enable this view by clicking the &quot;Cover grid&quot; button in the bottom right corner of the main calibre window.</string>
+              <string>Control the Cover grid view. You can enable this view by clicking the &quot;Layout&quot; button in the bottom right corner of the main calibre window.</string>
              </property>
              <property name="wordWrap">
               <bool>true</bool>
@@ -931,14 +938,14 @@ then the tags will be displayed each on their own line.</string>
          </property>
         </widget>
        </item>
-       <item row="10" column="0" colspan="2">
+       <item row="11" column="0" colspan="2">
         <widget class="QCheckBox" name="opt_tag_browser_old_look">
          <property name="text">
           <string>Use &amp;alternating row colors in the Tag browser</string>
          </property>
         </widget>
        </item>
-       <item row="11" column="0" colspan="2">
+       <item row="12" column="0" colspan="2">
         <widget class="QCheckBox" name="opt_tag_browser_hide_empty_categories">
          <property name="toolTip">
           <string>When checked, calibre will automatically hide any category
@@ -972,7 +979,7 @@ if you never want subcategories</string>
          </property>
         </widget>
        </item>
-       <item row="8" column="0">
+       <item row="9" column="0">
         <widget class="QCheckBox" name="opt_show_avg_rating">
          <property name="text">
           <string>Show &amp;average ratings in the Tag browser</string>
@@ -982,7 +989,7 @@ if you never want subcategories</string>
          </property>
         </widget>
        </item>
-       <item row="9" column="0" colspan="2">
+       <item row="10" column="0" colspan="2">
         <widget class="QCheckBox" name="opt_tag_browser_show_counts">
          <property name="toolTip">
           <string>Show counts for items in the Tag browser. Such as the number of books
@@ -1023,6 +1030,13 @@ see the counts by hovering your mouse over any item.</string>
          </property>
          <property name="singleStep">
           <double>0.100000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="0">
+        <widget class="QCheckBox" name="opt_tag_browser_show_tooltips">
+         <property name="text">
+          <string>Show &amp;tooltips in the Tag browser</string>
          </property>
         </widget>
        </item>

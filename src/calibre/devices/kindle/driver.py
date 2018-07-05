@@ -199,7 +199,7 @@ class KINDLE(USBMS):
         return bookmarked_books
 
     def generate_annotation_html(self, bookmark):
-        from calibre.ebooks.BeautifulSoup import BeautifulSoup, Tag, NavigableString
+        from calibre.ebooks.BeautifulSoup import BeautifulSoup, Tag
         # Returns <div class="user_annotations"> ... </div>
         last_read_location = bookmark.last_read_location
         timestamp = datetime.datetime.utcfromtimestamp(bookmark.timestamp)
@@ -214,13 +214,13 @@ class KINDLE(USBMS):
         spanTag = Tag(ka_soup, 'span')
         spanTag['style'] = 'font-weight:bold'
         if bookmark.book_format == 'pdf':
-            spanTag.insert(0,NavigableString(
+            spanTag.insert(0,BeautifulSoup(
                 _("%(time)s<br />Last page read: %(loc)d (%(pr)d%%)") % dict(
                     time=strftime(u'%x', timestamp.timetuple()),
                     loc=last_read_location,
                     pr=percent_read)))
         else:
-            spanTag.insert(0,NavigableString(
+            spanTag.insert(0,BeautifulSoup(
                 _("%(time)s<br />Last page read: Location %(loc)d (%(pr)d%%)") % dict(
                     time=strftime(u'%x', timestamp.timetuple()),
                     loc=last_read_location,
@@ -259,7 +259,7 @@ class KINDLE(USBMS):
                                     typ=user_notes[location]['type']))
 
             for annotation in annotations:
-                divTag.insert(dtc, annotation)
+                divTag.insert(dtc, BeautifulSoup(annotation))
                 dtc += 1
 
         ka_soup.insert(0,divTag)
@@ -391,7 +391,8 @@ class KINDLE2(KINDLE):
     # x330 on the PaperWhite
     # x262 on the Touch. Doesn't choke on x330, though.
     # x470 on the Voyage, checked that it works on PW, Touch checked by eschwartz.
-    THUMBNAIL_HEIGHT         = 470
+    # x500 on the Oasis 2017. checked that it works on the PW3
+    THUMBNAIL_HEIGHT         = 500
 
     @classmethod
     def migrate_extra_customization(cls, vals):
@@ -539,9 +540,9 @@ class KINDLE2(KINDLE):
                         if temp in self.EXTRA_CUSTOMIZATION_CHOICES[self.OPT_APNX_METHOD]:
                             method = temp
                         else:
-                            print ("Invalid method choice for this book (%r), ignoring." % temp)
+                            print("Invalid method choice for this book (%r), ignoring." % temp)
                     except:
-                        print 'Could not retrieve override method choice, using default.'
+                        print('Could not retrieve override method choice, using default.')
                 apnx_builder.write_apnx(filepath, apnx_path, method=method, page_count=custom_page_count)
             except:
                 print 'Failed to generate APNX'

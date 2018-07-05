@@ -8,7 +8,7 @@ __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 # Imports {{{
-import os, shutil, uuid, json, glob, time, cPickle, hashlib, errno, sys
+import os, shutil, uuid, json, glob, time, hashlib, errno, sys
 from functools import partial
 
 import apsw
@@ -23,6 +23,7 @@ from calibre.db.delete_service import delete_service
 from calibre.db.errors import NoSuchFormat
 from calibre.library.field_metadata import FieldMetadata
 from calibre.ebooks.metadata import title_sort, author_to_author_sort
+from calibre.utils import pickle_binary_string, unpickle_binary_string
 from calibre.utils.icu import sort_key
 from calibre.utils.config import to_json, from_json, prefs, tweaks
 from calibre.utils.date import utcfromtimestamp, parse_date
@@ -356,8 +357,7 @@ class DB(object):
         if not exists:
             # Be more strict when creating new libraries as the old calculation
             # allowed for max path lengths of 265 chars.
-            if (iswindows and len(self.library_path) >
-                    self.WINDOWS_LIBRARY_PATH_LIMIT):
+            if (iswindows and len(self.library_path) > self.WINDOWS_LIBRARY_PATH_LIMIT):
                 raise ValueError(_(
                     'Path to library too long. Must be less than'
                     ' %d characters.')%self.WINDOWS_LIBRARY_PATH_LIMIT)
@@ -444,8 +444,7 @@ class DB(object):
                     progress_callback(_('creating custom column ') + f['label'], i)
                     self.create_custom_column(f['label'], f['name'],
                             f['datatype'],
-                            (f['is_multiple'] is not None and
-                                len(f['is_multiple']) > 0),
+                            (f['is_multiple'] is not None and len(f['is_multiple']) > 0),
                             f['is_editable'], f['display'])
 
         defs = self.prefs.defaults
@@ -907,7 +906,7 @@ class DB(object):
         import re
         if not label:
             raise ValueError(_('No label was provided'))
-        if re.match('^\w*$', label) is None or not label[0].isalpha() or label.lower() != label:
+        if re.match(r'^\w*$', label) is None or not label[0].isalpha() or label.lower() != label:
             raise ValueError(_('The label must contain only lower case letters, digits and underscores, and start with a letter'))
         if datatype not in CUSTOM_DATA_TYPES:
             raise ValueError('%r is not a supported data type'%datatype)
@@ -1694,7 +1693,10 @@ class DB(object):
     def conversion_options(self, book_id, fmt):
         for (data,) in self.conn.get('SELECT data FROM conversion_options WHERE book=? AND format=?', (book_id, fmt.upper())):
             if data:
-                return cPickle.loads(bytes(data))
+                try:
+                    return unpickle_binary_string(bytes(data))
+                except Exception:
+                    pass
 
     def has_conversion_options(self, ids, fmt='PIPE'):
         ids = frozenset(ids)
@@ -1711,7 +1713,8 @@ class DB(object):
             [(book_id, fmt.upper()) for book_id in book_ids])
 
     def set_conversion_options(self, options, fmt):
-        options = [(book_id, fmt.upper(), buffer(cPickle.dumps(data, -1))) for book_id, data in options.iteritems()]
+        options = [(book_id, fmt.upper(), buffer(pickle_binary_string(data.encode('utf-8') if isinstance(data, unicode) else data)))
+                for book_id, data in options.iteritems()]
         self.executemany('INSERT OR REPLACE INTO conversion_options(book,format,data) VALUES (?,?,?)', options)
 
     def get_top_level_move_items(self, all_paths):
@@ -1785,14 +1788,13 @@ class DB(object):
         self.executemany('INSERT INTO data (book,format,uncompressed_size,name) VALUES (?,?,?,?)', vals)
 
     def backup_database(self, path):
-        # We have to open a new connection to self.dbpath, until this issue is fixed:
-        # https://github.com/rogerbinns/apsw/issues/199
         dest_db = apsw.Connection(path)
-        source = apsw.Connection(self.dbpath)
-        with dest_db.backup('main', source, 'main') as b:
+        with dest_db.backup('main', self.conn, 'main') as b:
             while not b.done:
-                b.step(100)
-        source.close()
+                try:
+                    b.step(100)
+                except apsw.BusyError:
+                    pass
         dest_db.cursor().execute('DELETE FROM metadata_dirtied; VACUUM;')
         dest_db.close()
 
